@@ -118,6 +118,8 @@ tools/j773g-boot.sh g3-usb       # keyboard types in the shell (all ports incl. 
 tools/j773g-boot.sh g4-pcie      # `ip link` shows eth0 (tg3)
 tools/j773g-boot.sh g5-cpufreq   # still alive after `yes > /dev/null &` x4 for a minute
 tools/j773g-boot.sh g6-display   # appledrm takes over HDMI from simpledrm
+tools/j773g-boot.sh g7-poweroff  # then `poweroff -f`: the mini must stay OFF (docs/j773g-poweroff.md)
+tools/j773g-boot.sh g8-gpu       # Rust kernel; /dev/dri/renderD128. Use Gravity's m1n1 as stage 2
 ```
 
 After each attempt append an entry to NOTES.md (format in START_HERE.md

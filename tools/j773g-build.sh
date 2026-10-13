@@ -8,11 +8,12 @@
 #   dtbs       boot-ladder DTBs                 -> build/j773g/dtb/
 #   check      same with CHECK_DTBS=y (dt-schema validation)
 #   kernel     Image.gz                         -> build/j773g/Image.gz
+#   kernel-gpu Rust + DRM_ASAHI_M4 kernel        -> build/j773g/Image-gpu.gz
 #   initramfs  busybox initramfs                -> build/j773g/initramfs.cpio.gz
 #   m1n1       m1n1.bin + proxyclient           -> build/j773g/m1n1/
 #              (M1N1_FLAVOUR=gravity             -> build/j773g/m1n1-gravity/)
 # Environment:
-#   BASE=gravity (default) GravityLinux gravity-m4 @ GRAVITY_SHA, rungs g0..g7
+#   BASE=gravity (default) GravityLinux gravity-m4 @ GRAVITY_SHA, rungs g0..g8
 #                          + "stock" (Gravity's unmodified J773g DTB)
 #   BASE=asahi             legacy Asahi 77cb8f24c2 tree, rungs r0..r5,
 #                          artifacts under build/j773g/asahi/
@@ -23,7 +24,7 @@
 set -euo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 IMAGE=omarchy-j773g-build
-STEP=${1:?usage: j773g-build.sh image|src|config|dtbs|check|kernel|initramfs|m1n1|all|shell}
+STEP=${1:?usage: j773g-build.sh image|src|config|dtbs|check|kernel|kernel-gpu|initramfs|m1n1|all|shell}
 if [[ $STEP == image || -z $(docker images -q "$IMAGE") ]]; then
   docker build -t "$IMAGE" "$REPO/tools/j773g"
   [[ $STEP == image ]] && exit 0

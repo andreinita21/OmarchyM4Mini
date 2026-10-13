@@ -6,7 +6,7 @@
 #   /out   build/j773g/ in the repository (git-ignored)
 #
 # BASE=gravity (default): GravityLinux/linux gravity-m4, pinned below. Its
-#   t8132-j773g.dts has booted Fedora on an M4 mini. The ladder rungs g0..g7
+#   t8132-j773g.dts has booted Fedora on an M4 mini. The ladder rungs g0..g8
 #   are that board file plus dts/t8132-j773g-ladder.dtsi. M4_HACKS=1 adds
 #   upstream's m4-boot-hacks patch (Gravity boots without it).
 #   Output: /out/Image.gz, /out/dtb/, /out/kernel.config
@@ -36,6 +36,7 @@ case $BASE in
       [g5-cpufreq]="SMC STORAGE USB PCIE CPUFREQ"
       [g6-display]="SMC STORAGE USB PCIE CPUFREQ DISPLAY"
       [g7-poweroff]="SMC STORAGE USB PCIE CPUFREQ DISPLAY PMU"
+      [g8-gpu]="SMC STORAGE USB PCIE CPUFREQ DISPLAY PMU GPU"
     )
     ;;
   asahi)
@@ -138,23 +139,31 @@ cmd_dtbs() {
   (cd "$O/dtb" && sha256sum ./*.dtb | cut -c1-16,65-)
 }
 
-cmd_config() {
-  make -C "$L" -s ARCH=arm64 LLVM=1 defconfig
-  (cd "$L" && scripts/kconfig/merge_config.sh -m .config /repo/tools/j773g/kernel.fragment >/dev/null)
-  make -C "$L" -s ARCH=arm64 LLVM=1 olddefconfig
+# merge_and_check <tree> <fragment...>: defconfig + fragments, then report
+# every fragment option that did not end up in .config as written.
+merge_and_check() {
+  local tree=$1; shift
+  make -C "$tree" -s ARCH=arm64 LLVM=1 ${RUSTVARS[@]+"${RUSTVARS[@]}"} defconfig
+  (cd "$tree" && scripts/kconfig/merge_config.sh -m .config "$@" >/dev/null)
+  make -C "$tree" -s ARCH=arm64 LLVM=1 ${RUSTVARS[@]+"${RUSTVARS[@]}"} olddefconfig
   log "fragment options that did not stick"
-  local bad=0
+  local bad=0 line k v got
   while IFS= read -r line; do
     [[ $line =~ ^(CONFIG_[A-Z0-9_]+)=(.*)$ ]] || continue
-    local k=${BASH_REMATCH[1]} v=${BASH_REMATCH[2]} got
-    got=$(grep -E "^$k=|^# $k is not set" "$L/.config" || true)
+    k=${BASH_REMATCH[1]} v=${BASH_REMATCH[2]}
+    got=$(grep -E "^$k=|^# $k is not set" "$tree/.config" || true)
     if [[ $v == n ]]; then
       [[ -z $got || $got == "# $k is not set" ]] || { echo "  $k wanted n, got $got"; bad=1; }
     else
       [[ $got == "$k=$v" ]] || { echo "  $k wanted $v, got ${got:-<absent>}"; bad=1; }
     fi
-  done < /repo/tools/j773g/kernel.fragment
+  done < <(cat "$@")
   [[ $bad == 0 ]] && echo "  none"
+  return 0
+}
+
+cmd_config() {
+  merge_and_check "$L" /repo/tools/j773g/kernel.fragment
   mkdir -p "$O" && cp "$L/.config" "$O/kernel.config"
 }
 
@@ -167,6 +176,26 @@ cmd_kernel() {
   make -C "$L" -s ARCH=arm64 LLVM=1 kernelrelease > "$O/kernelrelease"
   git -C "$L" rev-parse HEAD > "$O/REVISION"
   (cd "$O" && sha256sum Image.gz | cut -c1-16)
+}
+
+# GPU kernel: same tree in a separate worktree (the main tree is built in
+# place), Rust on, DRM_ASAHI_M4 built in. Gravity base only.
+RUSTVARS=()
+cmd_kernel_gpu() {
+  [[ $BASE == gravity ]] || { echo "kernel-gpu needs BASE=gravity" >&2; exit 2; }
+  local W=/src/gravity-linux-gpu
+  RUSTVARS=(RUSTC=/usr/bin/rustc BINDGEN=/usr/bin/bindgen HOSTRUSTC=/usr/bin/rustc)
+  if [[ ! -d $W ]]; then
+    git -C "$L" worktree add -q --detach "$W" HEAD
+  fi
+  git -C "$W" -c advice.detachedHead=false checkout -q -f "$(git -C "$L" rev-parse HEAD)"
+  make -C "$W" -s ARCH=arm64 LLVM=1 "${RUSTVARS[@]}" rustavailable
+  [[ -f $W/.config ]] || merge_and_check "$W" /repo/tools/j773g/kernel.fragment /repo/tools/j773g/kernel-gpu.fragment
+  log "building GPU Image.gz with $JOBS jobs"
+  make -C "$W" -s ARCH=arm64 LLVM=1 "${RUSTVARS[@]}" -j"$JOBS" Image.gz
+  cp "$W/arch/arm64/boot/Image.gz" "$O/Image-gpu.gz"
+  cp "$W/.config" "$O/kernel-gpu.config"
+  (cd "$O" && sha256sum Image-gpu.gz | cut -c1-16)
 }
 
 cmd_initramfs() {
@@ -211,9 +240,10 @@ case ${1:-} in
   dtbs) cmd_dtbs ;;
   check) CHECK=y cmd_dtbs ;;
   kernel) cmd_kernel ;;
+  kernel-gpu) cmd_kernel_gpu ;;
   initramfs) cmd_initramfs ;;
   m1n1) cmd_m1n1 ;;
   all) cmd_src; cmd_config; cmd_dtbs; cmd_kernel; cmd_initramfs; cmd_m1n1 ;;
   shell) exec bash ;;
-  *) echo "usage: $0 src|config|dtbs|check|kernel|initramfs|m1n1|all|shell  (env BASE=gravity|asahi)" >&2; exit 2 ;;
+  *) echo "usage: $0 src|config|dtbs|check|kernel|kernel-gpu|initramfs|m1n1|all|shell  (env BASE=gravity|asahi)" >&2; exit 2 ;;
 esac

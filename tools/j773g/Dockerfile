@@ -27,3 +27,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 ENV CARGO_HOME=/opt/cargo RUSTUP_HOME=/opt/rustup PATH=/opt/cargo/bin:$PATH
 
 WORKDIR /work
+
+# Kernel Rust (GPU rung, DRM_ASAHI_M4): Debian's rustc/bindgen match the
+# kernel's minimum versions; the build selects them explicitly with
+# RUSTC=/usr/bin/rustc BINDGEN=/usr/bin/bindgen so rustup's newer compiler
+# above stays m1n1-only.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bindgen libclang-dev rust-src rustc \
+    && rm -rf /var/lib/apt/lists/*

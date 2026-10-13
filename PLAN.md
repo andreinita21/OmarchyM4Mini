@@ -114,7 +114,8 @@ console if any, partitions, links, then a shell.
 | g5-cpufreq | +CPUFREQ | no hang under load; `/sys/devices/system/cpu/cpufreq` | keyboard |
 | g6-display | +DISPLAY | appledrm takes over HDMI from simpledrm | screen |
 | g7-poweroff | +PMU (`dts/t8132-j773g-pmu.dtsi`, not in Gravity) | `poweroff -f` leaves the mini off; RTC readable | LED off |
-| later | GPU (Rust kernel), Wi-Fi/BT firmware, audio with reviewed safety data | — | — |
+| g8-gpu | +GPU, boots `Image-gpu.gz` (Rust, DRM_ASAHI_M4); needs Gravity's m1n1 (it supplies T8132 GPU firmware/platform data) | `/dev/dri/renderD128`; dmesg shows the GPU firmware up | `ls /dev/dri` |
+| later | Wi-Fi/BT firmware, audio with reviewed safety data | — | — |
 
 If a rung is black: boot `stock`; then warm-reboot into `g0-boot` and read
 the previous console from pstore (printed by the initramfs). The m1n1
@@ -152,7 +153,6 @@ Still open:
   values from this mini's ioreg) in `dts/t8132-j773g-pmu.dtsi`, rung
   g7-poweroff, see `docs/j773g-poweroff.md`. Needs a hardware test.
 - Whether the m1n1 hypervisor now works on T8132 (fixes landing upstream).
-- GPU: needs a Rust-enabled kernel build (DRM_ASAHI_M4) in the container.
 - Wi-Fi/BT firmware for BCM4388 C2 "sakhalin" (Gravity's fwextract).
 - Speaker safety: Gravity's in-kernel limiter reviewed in
   `docs/j773g-speaker-safety.md`; audio stays off until the AID36 preset
