@@ -170,7 +170,7 @@ Result / last log line: no boot attempted; nothing written outside the
 Next step: finish kernel Image.gz build, initramfs, m1n1 build; then
   items (4) host scripts, (5) research, (6) home-day checklist, (7) README.
 
-## 2026-10-14 00:30 — setup 3 (kernel/initramfs/m1n1 built; research; Gravity prior art)
+## 2026-10-13 23:58 — setup 3 (kernel/initramfs/m1n1 built; research; Gravity prior art)
 Model/effort: Opus 5.5 / medium
 Changed:
 - Kernel: build/j773g/Image.gz (17 MB, 7.1.9-ge0a31617df5c, arm64 defconfig
@@ -229,7 +229,7 @@ Changed:
 - Correction to setup 3: "PLAN.md updated" there happened in this step.
 Result / last log line: no boot attempted. Nothing written to the mini's
   disk layout, partitions, boot policy or ESP. Installed software: Homebrew
-  dtc; Docker image omarchy-j773g-build; Docker volume j773g-src (~6 GB).
+  dtc; Docker image omarchy-j773g-build (3.2 GB); Docker volume j773g-src (5.9 GB).
 Diagnosis: n/a. Every remaining step needs Andrei (hardware or approval).
 Next step (Andrei):
   1. Read docs/j773g-home-day-checklist.md. Decide the stub route (A =
