@@ -5,7 +5,9 @@
 # tools/boot.sh using the kit built by tools/j773g-build.sh:
 #   build/j773g/Image.gz, build/j773g/initramfs.cpio.gz,
 #   build/j773g/dtb/t8132-j773g-<rung>.dtb, build/j773g/m1n1/proxyclient/
-# Rungs: r0-boot r1-smc r2-storage r3-usb r4-pcie r5-atc23 rx-all
+# Rungs (Gravity base): stock g0-boot g1-smc g2-storage g3-usb g4-pcie
+#   g5-cpufreq g6-display. "stock" = Gravity's unmodified J773g tree.
+# Legacy Asahi rungs r0-boot..r5-atc23 use build/j773g/asahi/ automatically.
 # Env: M1N1DEVICE (required, the mini's proxy tty), PYTHON, BOOT_ARGS.
 # Default args keep panics on the HDMI screen (panic=0) because the mini has
 # no console-free verdict like the Air's reboot probe; override BOOT_ARGS
@@ -15,8 +17,10 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 KIT=${BOOT_KIT:-$REPO/build/j773g}
 RUNG=${1:?usage: j773g-boot.sh <rung> [tag]}
 TAG=${2:-j773g-$RUNG}
-DTB=$KIT/dtb/t8132-j773g-$RUNG.dtb
-[[ -f $DTB ]] || { echo "no such rung DTB: $DTB" >&2; ls "$KIT/dtb" >&2; exit 2; }
+SUB=$KIT
+[[ $RUNG == r[0-9]* ]] && SUB=$KIT/asahi
+DTB=$SUB/dtb/t8132-j773g-$RUNG.dtb
+[[ -f $DTB ]] || { echo "no such rung DTB: $DTB" >&2; ls "$SUB/dtb" >&2; exit 2; }
 export BOOT_KIT=$KIT
 export BOOT_ARGS=${BOOT_ARGS:-nosmp idle=nop panic=0 console=tty0 fbcon=nodefer loglevel=7}
-exec "$REPO/tools/boot.sh" "$DTB" "$TAG" "$KIT/Image.gz"
+exec "$REPO/tools/boot.sh" "$DTB" "$TAG" "$SUB/Image.gz"

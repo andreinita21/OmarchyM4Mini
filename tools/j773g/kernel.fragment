@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Kernel config fragment for J773g RAM-only bring-up, merged on top of the
-# arm64 defconfig of Asahi 77cb8f24c2 (upstream's 7.1.9 freeze point).
+# arm64 defconfig of the kernel base (GravityLinux gravity-m4 by default,
+# legacy Asahi 77cb8f24c2 with BASE=asahi).
 # Everything the boot ladder needs is built in: the busybox initramfs carries
 # no modules. Mirrors upstream's night-3 kernel choices (16K pages, T8132
 # stack =y, Rust/DRM_ASAHI/BTF off) plus the mini's tg3 Ethernet.
@@ -40,7 +41,6 @@ CONFIG_LOGO=y
 CONFIG_VT=y
 CONFIG_VT_CONSOLE=y
 CONFIG_DRM_ASAHI=n
-CONFIG_DRM_APPLE=n
 CONFIG_RUST=n
 
 # SMC (layer 1)
@@ -101,3 +101,21 @@ CONFIG_PANIC_TIMEOUT=-1
 CONFIG_DEBUG_INFO_NONE=y
 CONFIG_DEBUG_INFO_BTF=n
 CONFIG_MODULES=y
+
+# Native HDMI through DCP (only used by the g6-display rung and later)
+CONFIG_BACKLIGHT_CLASS_DEVICE=y
+CONFIG_DRM_APPLE=y
+CONFIG_DRM_APPLE_AUDIO=n
+
+# Persistent console in RAM (Gravity's ramoops reservation): after a hang or
+# panic, a warm reboot into any rung shows the previous log in /sys/fs/pstore
+CONFIG_PSTORE=y
+CONFIG_PSTORE_RAM=y
+CONFIG_PSTORE_CONSOLE=y
+CONFIG_PSTORE_PMSG=y
+
+# Speaker safety: no J773g speaker profile has been reviewed yet. Keep every
+# speaker-path driver out of the kernel (the ladder also disables the nodes).
+CONFIG_SND_SOC_APPLE_T8132_SPEAKER=n
+CONFIG_SND_SOC_TAS2764=n
+CONFIG_SND_SOC_APPLE_MCA=n
