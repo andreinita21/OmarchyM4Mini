@@ -8,7 +8,14 @@ set -euo pipefail
 
 LINUX_URL=https://github.com/AsahiLinux/linux.git
 LINUX_SHA=77cb8f24c2381a8abb7272d7bbdec548d6426a8a
-M1N1_URL=https://github.com/AsahiLinux/m1n1.git
+# M1N1_FLAVOUR=asahi (AsahiLinux/m1n1) or gravity (GravityLinux/bootloader,
+# the m1n1 fork their J773g installer ships, with T8132 kboot fixes).
+M1N1_FLAVOUR=${M1N1_FLAVOUR:-asahi}
+case $M1N1_FLAVOUR in
+  asahi) M1N1_URL=https://github.com/AsahiLinux/m1n1.git ;;
+  gravity) M1N1_URL=https://github.com/GravityLinux/bootloader.git ;;
+  *) echo "M1N1_FLAVOUR must be asahi or gravity" >&2; exit 2 ;;
+esac
 M1N1_REF=${M1N1_REF:-main}
 JOBS=${JOBS:-$(nproc)}
 L=/src/linux
@@ -131,21 +138,53 @@ cmd_initramfs() {
 }
 
 cmd_m1n1() {
-  if [[ ! -d /src/m1n1/.git ]]; then
-    git clone -q --recursive "$M1N1_URL" /src/m1n1
+  local M=/src/m1n1-$M1N1_FLAVOUR O=/out/m1n1
+  [[ $M1N1_FLAVOUR == asahi ]] || O=/out/m1n1-$M1N1_FLAVOUR
+  if [[ ! -d $M/.git ]]; then
+    git clone -q "$M1N1_URL" "$M"
   fi
-  git -C /src/m1n1 fetch -q origin
-  git -C /src/m1n1 -c advice.detachedHead=false checkout -q "origin/$M1N1_REF" 2>/dev/null ||
-    git -C /src/m1n1 -c advice.detachedHead=false checkout -q "$M1N1_REF"
-  git -C /src/m1n1 submodule update -q --init --recursive
-  make -C /src/m1n1 -s clean
-  make -C /src/m1n1 -s -j"$JOBS" RELEASE=1
-  mkdir -p /out/m1n1
-  cp /src/m1n1/build/m1n1.bin /src/m1n1/build/m1n1.macho /out/m1n1/ 2>/dev/null || cp /src/m1n1/build/m1n1.bin /out/m1n1/
-  git -C /src/m1n1 describe --always --tags > /out/m1n1/VERSION
-  rsync -a --delete --exclude __pycache__ /src/m1n1/proxyclient/ /out/m1n1/proxyclient/
-  cat /out/m1n1/VERSION
-  (cd /out/m1n1 && sha256sum m1n1.bin | cut -c1-16)
+  git -C "$M" fetch -q origin
+  git -C "$M" -c advice.detachedHead=false checkout -q "origin/$M1N1_REF" 2>/dev/null ||
+    git -C "$M" -c advice.detachedHead=false checkout -q "$M1N1_REF"
+  git -C "$M" submodule update -q --init --recursive
+  make -C "$M" -s clean
+  make -C "$M" -s -j"$JOBS" RELEASE=1
+  mkdir -p "$O"
+  cp "$M/build/m1n1.bin" "$O/"
+  cp "$M/build/m1n1.macho" "$O/" 2>/dev/null || true
+  git -C "$M" describe --always --tags > "$O/VERSION"
+  git -C "$M" rev-parse HEAD >> "$O/VERSION"
+  rsync -a --delete --exclude __pycache__ "$M/proxyclient/" "$O/proxyclient/"
+  cat "$O/VERSION"
+  (cd "$O" && sha256sum m1n1.bin | cut -c1-16)
+}
+
+# Known-good control: GravityLinux's gravity-m4 tree, whose t8132-j773g.dts
+# has booted Fedora on an M4 mini. Built with the same fragment (simpledrm
+# console, no Rust) so it isolates "our DT/patches" from "the boot chain".
+GRAVITY_URL=https://github.com/GravityLinux/linux.git
+GRAVITY_REF=${GRAVITY_REF:-gravity-m4}
+cmd_gravity() {
+  local G=/src/gravity-linux
+  if [[ ! -d $G/.git ]]; then
+    git init -q "$G"
+  fi
+  log "fetching $GRAVITY_URL $GRAVITY_REF"
+  git -C "$G" fetch -q --depth 1 "$GRAVITY_URL" "$GRAVITY_REF"
+  git -C "$G" -c advice.detachedHead=false checkout -q -f FETCH_HEAD
+  git -C "$G" clean -qfdx
+  git -C "$G" log --oneline -1
+  make -C "$G" -s ARCH=arm64 LLVM=1 defconfig
+  (cd "$G" && scripts/kconfig/merge_config.sh -m .config /repo/tools/j773g/kernel.fragment >/dev/null)
+  make -C "$G" -s ARCH=arm64 LLVM=1 olddefconfig
+  make -C "$G" -s ARCH=arm64 LLVM=1 -j"$JOBS" Image.gz apple/t8132-j773g.dtb
+  mkdir -p /out/gravity
+  cp "$G/arch/arm64/boot/Image.gz" /out/gravity/Image.gz
+  cp "$G/arch/arm64/boot/dts/apple/t8132-j773g.dtb" /out/gravity/t8132-j773g.dtb
+  cp "$G/.config" /out/gravity/kernel.config
+  git -C "$G" rev-parse HEAD > /out/gravity/REVISION
+  make -C "$G" -s ARCH=arm64 LLVM=1 kernelrelease > /out/gravity/kernelrelease
+  (cd /out/gravity && sha256sum Image.gz t8132-j773g.dtb | cut -c1-16,65-)
 }
 
 case ${1:-} in
@@ -156,7 +195,8 @@ case ${1:-} in
   kernel) cmd_kernel ;;
   initramfs) cmd_initramfs ;;
   m1n1) cmd_m1n1 ;;
+  gravity) cmd_gravity ;;
   all) cmd_src; cmd_config; cmd_dtbs; cmd_kernel; cmd_initramfs; cmd_m1n1 ;;
   shell) exec bash ;;
-  *) echo "usage: $0 src|config|dtbs|check|kernel|initramfs|m1n1|all|shell" >&2; exit 2 ;;
+  *) echo "usage: $0 src|config|dtbs|check|kernel|initramfs|m1n1|gravity|all|shell" >&2; exit 2 ;;
 esac

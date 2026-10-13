@@ -10,12 +10,14 @@
 #   kernel     Image.gz                          -> build/j773g/Image.gz
 #   initramfs  busybox initramfs                 -> build/j773g/initramfs.cpio.gz
 #   m1n1       m1n1.bin + proxyclient            -> build/j773g/m1n1/
+#              (M1N1_FLAVOUR=gravity              -> build/j773g/m1n1-gravity/)
+#   gravity    control kernel + DTB from GravityLinux gravity-m4 -> build/j773g/gravity/
 # Source trees live in the Docker volume "j773g-src" (case-sensitive, fast);
 # only artifacts land in the git-ignored build/ directory.
 set -euo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 IMAGE=omarchy-j773g-build
-STEP=${1:?usage: j773g-build.sh image|src|config|dtbs|check|kernel|initramfs|m1n1|all|shell}
+STEP=${1:?usage: j773g-build.sh image|src|config|dtbs|check|kernel|initramfs|m1n1|gravity|all|shell}
 if [[ $STEP == image || -z $(docker images -q "$IMAGE") ]]; then
   docker build -t "$IMAGE" "$REPO/tools/j773g"
   [[ $STEP == image ]] && exit 0
@@ -23,7 +25,7 @@ fi
 mkdir -p "$REPO/build/j773g"
 TTY=(); [[ -t 0 ]] && TTY=(-it)
 exec docker run --rm ${TTY[@]+"${TTY[@]}"} \
-  -e JOBS -e M1N1_REF \
+  -e JOBS -e M1N1_REF -e GRAVITY_REF -e M1N1_FLAVOUR \
   -v j773g-src:/src \
   -v "$REPO":/repo:ro \
   -v "$REPO/build/j773g":/out \
