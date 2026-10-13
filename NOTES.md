@@ -22,6 +22,8 @@ Changed:
 - Copied ~/start_here.md verbatim to START_HERE.md. The source file has lost
   its markdown line structure (headings and bullets run together mid-line);
   content is intact and readable. Reflow pending Andrei's decision.
+  "git diff --check" on the first commit flags trailing whitespace on ~60
+  START_HERE.md lines, all inherited from the source; other files clean.
 - Created PLAN.md (skeleton), NOTES.md, docs/j773g-upstream-issue-draft.md
   (not posted). Added private/ to .gitignore.
 - Recon (read-only): system_profiler and sysctl report Mac16,10, hw.target
