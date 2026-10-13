@@ -50,65 +50,74 @@ Resolved open questions: Ethernet controller found (above); the
 atc0..3/lpdptx/dptx plus the per-ATC `atcN-dpxbar` muxes upstream already
 models; the mini speaker hardware is one SN012776 (TAS2764 family).
 
-## 3. Upstream patch applicability
+## 3. Kernel base: GravityLinux `gravity-m4` (decided 2026-10-14)
 
-| Upstream file | Scope | On J773g |
-|---|---|---|
-| patches/0001 storage+SMC, 0002 SPI, 0003 USB/ATC, 0004 SEP, 0005 SPMI/PMU, 0007 PCIe, 0009 SIO, 0010 AOP | SoC (`t8132.dtsi`) | apply |
-| patches/0006 Type-C | SoC part applies; `t8132-usbpd-spmi.dtsi` is J713-labelled | apply SoC part; mini has its own PD nodes in `dts/t8132-j773g-usb.dtsi` |
-| patches/0008 MTP | SoC + J713 board | SoC part harmless (disabled); board part irrelevant |
-| patches/0011 delete atc2/atc3 PMGR | J713 board | **do not apply** (real on the mini) |
-| patches/0012 USB DART SIDs <1,14>, 0013 NVMe split, 0015 ANS IRQ roles | SoC | apply (mini ioreg agrees) |
-| patches/0014 MTP reset GPIOs, 0016 NVMe power domain | J713 board | 0014 irrelevant; 0016 re-expressed in the storage layer |
-| patches/*.dtso (cpufreq, cputemp, smc-poweroff) | J713 overlays | not qualified; cpufreq/temp are chip-level candidates later |
-| patches-kernel/m4-boot-hacks-7.1.9.patch | kernel | **required** (idle=nop, WFxT delay, AIC EL2 writes) |
-| patches-kernel/nvme-apple-t8132-split-nvmmu.patch | kernel | required with 0013 |
-| patches-kernel/j713-input/*, j713-smc-reboot-optional-nvmem | kernel | input: irrelevant; smc-reboot: evaluate with SMC layer |
-| patches-kernel/brcmfmac-bcm4388-rev6-c2-v116.patch | kernel | the mini has **BCM4388 C2** (14e4:4434, "sakhalin"), so likely needed for Wi-Fi |
+Andrei chose Gravity on 2026-10-14. Base = `GravityLinux/linux` branch
+`gravity-m4`, pinned at **4fc326f6c2** (7.1.13). Its `t8132-j773g.dts` has
+booted Fedora on M4 minis (native HDMI via DCP, NVMe, USB incl. front hub,
+Ethernet, cpufreq, speaker). Consequences:
 
-Base kernel: Asahi `asahi` branch at 77cb8f24c2 (upstream's 7.1.9 freeze
-point) which already contains `t8132.dtsi`, `t8132-jxxx.dtsi`,
-`t8132-pmgr.dtsi` and a minimal `t8132-j773g.dts` (commit fbf2e630a9).
+| Upstream Omarchy file | On the Gravity base |
+|---|---|
+| patches/0001–0016 (T8132 DT slices, J713 fixes) | not used; Gravity's `t8132.dtsi` already carries these subsystems |
+| patches-kernel/m4-boot-hacks-7.1.9.patch | applies cleanly but **not needed** (Gravity boots without it); available as `M4_HACKS=1` fallback |
+| patches-kernel/nvme-apple-t8132-split-nvmmu.patch | conflicts; Gravity has its own T8132 NVMe driver |
+| patches-kernel/brcmfmac-bcm4388-rev6-c2-v116.patch | conflicts; check whether Gravity's brcmfmac already handles 4388 C2 |
+| patches-kernel/j713-smc-reboot-optional-nvmem.patch | applies; relevant to the shutdown question (section 7) |
+| patches-kernel/j713-input/* | irrelevant (no MTP on the mini) |
+| patches/j713-*.dtso | J713 only |
 
-## 4. The layered device tree (`dts/`)
+The Asahi-based layered tree from 2026-10-13 is kept in `dts/asahi/` and
+still builds with `BASE=asahi` (rungs r0–r5, artifacts in
+`build/j773g/asahi/`), as a fallback and for comparison.
 
-One source, preprocessor-gated layers, each its own commit:
+## 4. The device tree ladder (`dts/t8132-j773g-ladder.dtsi`)
 
-| Layer | File | Gate | Enables | Evidence |
-|---|---|---|---|---|
-| 0 boot | `t8132-j773g.dts` | none | CPUs, AIC, PMGR, wdt, pinctrl, serial0, iBoot framebuffer (HDMI simpledrm) | Asahi board file + ioreg |
-| 1 SMC | `t8132-j773g-smc.dtsi` | `J773G_LAYER_SMC` | smc, smc_mbox (gpio provider, hwmon) | J713-proven nodes |
-| 2 storage | `t8132-j773g-storage.dtsi` | `J773G_LAYER_STORAGE` | ans_mbox, sart, nvme (APCIE_SYS_ST domain) | J713-proven; mini identical in ioreg |
-| 3 USB | `t8132-j773g-usb.dtsi` | `J773G_LAYER_USB` (+`_ATC23`) | dwc3_0/1, DARTs, atcphy, SPMI PD hpm0/1/3, connectors; atc2/atc3 as new nodes | atc0/1 J713-proven; atc2/3 UNVERIFIED |
-| 4 PCIe | `t8132-j773g-pcie.dtsi` | `J773G_LAYER_PCIE` | pcie0, pcie0_dart, port00 Wi-Fi/BT, pcie2_dart, port02 Ethernet, aliases | port 0 J713-proven; port 2 UNVERIFIED |
-| 5 TB | `t8132-j773g-thunderbolt.dtsi` | `J773G_LAYER_THUNDERBOLT` | nothing (addresses recorded) | no driver |
-| 6 display | `t8132-j773g-display.dtsi` | `J773G_LAYER_DISPLAY` | nothing yet; HDMI GPIO map; optional disp0 always-on experiment | no DCP upstream |
+Each rung = Gravity's unmodified `t8132-j773g.dts` + the ladder include,
+which forces `status = "disabled"` on every group the rung does not name.
+**Audio (speaker-audio, i2c3 amp, MCA, ADMAC, audio DART, DP audio) is
+disabled in every rung**, and the speaker/amp/MCA drivers are compiled out,
+until a J773g speaker safety profile has been reviewed.
 
-Build (Opus session writes the script, modelled on upstream `tools/mkdtb.sh`):
-copy `dts/*` into `arch/arm64/boot/dts/apple/` of the patched kernel tree,
-run the C preprocessor with `-D` flags for the wanted layers, then `dtc`.
+| Group | Nodes |
+|---|---|
+| SMC | smc_mbox, smc, pcie0-port0 pwren regulator |
+| STORAGE | ans_mbox, sart, nvme |
+| USB | nub_spmi_a0/a1, dwc3_0..3 + DARTs, atcphy0..3 |
+| PCIE | pcie0, pcie0_dart, pcie2_dart (needs SMC) |
+| CPUFREQ | cpufreq_e, cpufreq_p |
+| DISPLAY | display-subsystem, dcp/dcpext DARTs + mailboxes, dptxphy, SIO |
+| GPU | agx_mbox (m1n1 enables the GPU node itself; no DRM_ASAHI in this kernel yet) |
+
+Validated offline: every rung builds; each rung adds exactly its group's
+nodes (checked by walking the DTBs); dt-schema finds nothing beyond the 39
+findings of Gravity's stock DTB.
 
 ## 5. Boot ladder (one change per attempt, RAM only)
 
-Fixed boot args from upstream night 1:
-`nosmp idle=nop panic=-1 console=tty0 fbcon=nodefer loglevel=7`.
-Kernel: Asahi 77cb8f24c2 + m4-boot-hacks + split-NVMMU + T8132 DT patches,
-all T8132 drivers built in; busybox initramfs that prints probe results and
-`/proc/partitions` then `exec sh`.
+Boot args: `nosmp idle=nop panic=0 console=tty0 fbcon=nodefer loglevel=7`
+(`tools/j773g-boot.sh` default; conservative, Gravity itself needs neither
+`nosmp` nor `idle=nop` as far as its image recipes show). Kernel: gravity-m4
++ `tools/j773g/kernel.fragment` (all needed drivers built in, simpledrm
+console, DCP driver built in, pstore/ramoops, no Rust/GPU, no speaker
+drivers). Busybox initramfs prints probe lines, the previous boot's pstore
+console if any, partitions, links, then a shell.
 
-| Rung | DTB layers | Expected | Verdict without keyboard |
+| Rung | Groups | Expected | Verdict without keyboard |
 |---|---|---|---|
-| r0 | boot | penguin + console on HDMI, shell prompt | screen |
-| r1 | +SMC | smc probe lines, hwmon | screen |
-| r2 | +storage | `nvme0n1` + partitions listed | screen |
-| r3 | +USB | keyboard on a rear TB port types in the shell | keyboard |
-| r4 | +PCIe | `eth0` (tg3) link; Wi-Fi only with firmware | screen / `ip link` |
-| r5 | +USB_ATC23 | front USB-C ports enumerate | keyboard on front port |
-| later | display, TB, audio | DCP, TB, mini-specific speaker safety | — |
+| stock | Gravity's own DTB (control) | console on HDMI, shell | screen |
+| g0-boot | none | penguin + console on HDMI, shell prompt | screen |
+| g1-smc | +SMC | macsmc probe lines, hwmon | screen |
+| g2-storage | +STORAGE | `nvme0n1` + partitions listed (nothing mounts it) | screen |
+| g3-usb | +USB | keyboard types in the shell (any port) | keyboard |
+| g4-pcie | +PCIE | `eth0` (tg3); Wi-Fi needs firmware | `ip link` |
+| g5-cpufreq | +CPUFREQ | no hang under load; `/sys/devices/system/cpu/cpufreq` | keyboard |
+| g6-display | +DISPLAY | appledrm takes over HDMI from simpledrm | screen |
+| later | GPU (Rust kernel), Wi-Fi/BT firmware, audio with reviewed safety data | — | — |
 
-If r0 is black: m1n1 hypervisor does not run on T8132 (upstream finding), so
-there is no virtual UART; fall back to bisecting the boot layer itself
-(framebuffer power domains first).
+If a rung is black: boot `stock`; then warm-reboot into `g0-boot` and read
+the previous console from pstore (printed by the initramfs). The m1n1
+hypervisor is gaining M4 support upstream; try `run_guest.py` last.
 
 ## 6. Phase 1 — remaining steps
 
@@ -118,9 +127,9 @@ there is no virtual UART; fall back to bisecting the boot layer itself
 | 2 | macOS recon, ioreg + device-tree plane into `private/` | mini (macOS) | done | done 2026-10-13 |
 | 2b | Preliminary layered DT + this plan | anywhere | Fable 5.1 high | done 2026-10-13 |
 | 2c | Validate DT offline (`dtc`, `dtbs_check`), build env, kernel + initramfs + m1n1 builds, host scripts, research, home-day checklist, README | mini (macOS, no hardware steps) | Opus 5.5 medium | done 2026-10-14 |
-| 3 | Shrink macOS partition, install m1n1 stub — recommended via the Gravity Linux installer (only J773g-capable installer), then stage 2 = plain m1n1 for proxy mode | mini, **Andrei's approval first** | Andrei + Opus | not started; steps in `docs/j773g-home-day-checklist.md` |
+| 3 | Shrink macOS partition, install m1n1 stub via the Gravity Linux installer (route A, chosen 2026-10-14), then stage 2 = plain m1n1 for proxy mode | mini, **Andrei's approval first** | Andrei + Opus | not started; steps in `docs/j773g-home-day-checklist.md` |
 | 4 | Host: clone fork, m1n1 proxyclient (`python3` + pyserial 3.5 + construct 2.10.70), copy the boot kit | host | Opus | not started |
-| 5 | Kernel builds: Docker on the mini (`tools/j773g-build.sh`), ~6 min full build | mini | Opus | done 2026-10-14 |
+| 5 | Kernel builds: Docker on the mini (`tools/j773g-build.sh`), ~6 min full build; rebased on Gravity gravity-m4 | mini | Opus | done 2026-10-14 |
 | 6 | Boot mini into m1n1 proxy, dump real ADT into `private/` | host + mini | Opus | not started |
 | 7 | Diff live ADT vs this plan; final PLAN.md | host | Fable 5.1 high | not started |
 
@@ -133,12 +142,15 @@ ports via hub on atc2); the GL3590 hub boots from its own NOR once GPIO 101
 (inherited from Gravity); Wi-Fi is BCM4388 C2 so the 4388 patch matters;
 HPM select IRQs 13/39/65 match Gravity's hardware-tested values.
 
+Decided 2026-10-14: kernel base = Gravity `gravity-m4`; stub route =
+Gravity installer (home-day checklist, route A).
+
 Still open:
-- Whether the front ports also need Gravity's ATC PHY driver properties
-  (`apple,fixed-usb3`, `apple,fixed-lane-swap`), absent from Asahi 77cb8f24c2.
-- SMC shutdown on the mini (the Air needed four NVMEM cells, upstream PR #48).
+- SMC shutdown on the mini: Gravity's tree has no `macsmc-reboot` NVMEM
+  cells either, which is what made the Air restart instead of power off
+  (upstream issue #24, PR #48). Candidate J773g fix, needs a hardware test.
 - Whether the m1n1 hypervisor now works on T8132 (fixes landing upstream).
-- Strategic: rebase the J773g work on GravityLinux's `gravity-m4` kernel
-  instead of Asahi 77cb8f24c2 + upstream's J713-era patches? Their tree
-  already boots this machine with DCP, GPU and NVMe. Decide after the
-  control boot (`tools/j773g-build.sh gravity`).
+- GPU: needs a Rust-enabled kernel build (DRM_ASAHI_M4) in the container.
+- Wi-Fi/BT firmware for BCM4388 C2 "sakhalin" (Gravity's fwextract).
+- Speaker safety profile for the SN012776 + mini enclosure (review Gravity's
+  `apple,j773g-speaker` driver before any audio rung).

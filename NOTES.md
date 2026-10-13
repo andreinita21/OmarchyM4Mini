@@ -240,3 +240,37 @@ Next step (Andrei):
   3. Strategic choice after the first control boot: keep Asahi 77cb8f24c2 +
      upstream patches, or rebase the J773g layers on Gravity's gravity-m4.
   4. Phase 1 step 7 (live ADT diff) on Fable 5.1 / high after the dump.
+
+## 2026-10-14 01:30 — setup 5 (rebase on GravityLinux gravity-m4)
+Model/effort: Opus 5.5 / medium
+Decisions (Andrei, 2026-10-14): "go with gravity" -> kernel base =
+  GravityLinux/linux gravity-m4; stub route = Gravity installer (route A).
+  Mini not reachable for a few days; offline work continues.
+Changed:
+- Gravity tree vs upstream Omarchy: m4-boot-hacks applies cleanly to
+  gravity-m4, i.e. Gravity boots J773g WITHOUT those hacks (kept as
+  M4_HACKS=1 fallback); split-NVMMU and brcmfmac 4388 patches conflict
+  (Gravity has its own T8132 NVMe driver). Gravity's packaged config =
+  Asahi Fedora 16K config + small overlays (DRM_ASAHI_M4=m, J773g speaker
+  drivers built in, dockchannel earlycon).
+- dts/t8132-j773g-ladder.dtsi: gates on top of Gravity's unmodified
+  t8132-j773g.dts. Groups SMC/STORAGE/USB/PCIE/CPUFREQ/DISPLAY/GPU; audio
+  disabled in every rung. Old Asahi layered tree -> dts/asahi/ (BASE=asahi).
+- Build: BASE=gravity default (pinned 4fc326f6c2, 7.1.13), rungs g0-boot ..
+  g6-display + stock (Gravity's own DTB). Fragment: + DRM_APPLE=y (needed
+  BACKLIGHT_CLASS_DEVICE=y), pstore/ramoops, speaker/TAS2764/MCA drivers =n.
+  All fragment options stick. Kernel 7.1.13-g7267e940bada built (~7 min).
+- init: prints the previous boot's console from pstore when present.
+- Verified offline: each rung adds exactly its group's nodes (DTB walk with
+  libfdt); stock adds only audio + agx mailbox; dt-schema: no finding in any
+  rung beyond the 39 of Gravity's stock DTB; QEMU smoke boot to the shell OK.
+- Found: Gravity's J773g tree has no macsmc-reboot NVMEM cells -> the Air's
+  "shutdown restarts" bug (upstream #24/PR #48) is likely present on the mini.
+- PLAN.md sections 3-5 and 7, README, home-day checklist rewritten for the
+  Gravity base. Legacy Asahi artifacts moved to build/j773g/asahi/.
+Result / last log line: no boot attempted; nothing written to the mini's
+  disk layout, ESP or boot policy.
+Next step: offline items: SMC poweroff NVMEM cells for J773g from this
+  mini's ioreg; Wi-Fi 4388 C2 support check in gravity-m4; speaker-safety
+  review notes for Gravity's apple,j773g-speaker (documentation only);
+  Rust-enabled GPU kernel build.

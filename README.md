@@ -28,8 +28,8 @@ Basecamp, Asahi Linux, Gravity Linux, Apple, or Kb2uka.
 | Step | State |
 | --- | --- |
 | macOS-side recon (ioreg / IODeviceTree), preliminary plan | done — [PLAN.md](PLAN.md) |
-| Layered J773g device tree, offline-validated (dtc + dt-schema) | done — [dts/](dts/) |
-| Containerised kernel / DTB / initramfs / m1n1 build, plus a GravityLinux control kernel | done — [tools/j773g-build.sh](tools/j773g-build.sh) |
+| Boot ladder on GravityLinux's hardware-tested J773g tree, offline-validated (dtc + dt-schema) | done — [dts/](dts/) |
+| Containerised kernel (GravityLinux gravity-m4) / DTB / initramfs / m1n1 build | done — [tools/j773g-build.sh](tools/j773g-build.sh) |
 | Research: ports, front hub, PCIe power, Wi-Fi chip, stub install | done — [docs/j773g-research.md](docs/j773g-research.md) |
 | m1n1 stub on the mini, live ADT dump through m1n1 | not started (needs a second machine and the owner's go-ahead) |
 | First RAM-only boot to a busybox shell on HDMI | not started |
@@ -44,32 +44,38 @@ The running log is [NOTES.md](NOTES.md); the next hardware session follows
 | [START_HERE.md](START_HERE.md) | Project brief and safety rules |
 | [PLAN.md](PLAN.md) | J713-vs-J773g comparison, patch applicability, boot ladder |
 | [NOTES.md](NOTES.md) | One entry per setup step or boot attempt |
-| [dts/](dts/) | `t8132-j773g.dts` plus one include per subsystem, gated on `-DJ773G_LAYER_*` |
-| [tools/j773g-build.sh](tools/j773g-build.sh), [tools/j773g/](tools/j773g/) | Docker build: Asahi `77cb8f24c2` + T8132 patches, ladder DTBs r0..r5, busybox initramfs, m1n1 |
+| [dts/t8132-j773g-ladder.dtsi](dts/t8132-j773g-ladder.dtsi) | Boot-ladder gates applied on top of GravityLinux's `t8132-j773g.dts`; audio always off |
+| [dts/asahi/](dts/asahi/) | Earlier layered tree on Asahi `77cb8f24c2` + upstream T8132 patches (`BASE=asahi`) |
+| [tools/j773g-build.sh](tools/j773g-build.sh), [tools/j773g/](tools/j773g/) | Docker build: GravityLinux `gravity-m4` kernel, ladder DTBs, busybox initramfs, m1n1 |
 | [tools/j773g-boot.sh](tools/j773g-boot.sh) | One logged RAM-only boot of a ladder rung through the m1n1 proxy (run on the host) |
 | [tools/j773g-adt-dump.sh](tools/j773g-adt-dump.sh) | Pull the live ADT into the git-ignored `private/` |
 | `docs/j773g-*.md` | Mini-specific notes |
 | everything else | Upstream's J713 work, unchanged; its front page is now [docs/upstream-README.md](docs/upstream-README.md) |
 
-## The device tree layers
+## The boot ladder
 
-One source builds any subset, so each boot attempt adds one subsystem:
+The kernel and board device tree come from [GravityLinux](https://github.com/GravityLinux/linux)
+(`gravity-m4`), whose J773g tree has booted Fedora on this machine. Each rung
+turns on one more subsystem group; audio stays off until a mini-specific
+speaker safety profile has been reviewed:
 
-| Rung | Layers | Expected result |
+| Rung | Adds | Expected result |
 | --- | --- | --- |
-| r0-boot | CPUs, AIC, PMGR, UART, watchdog, iBoot framebuffer | console on HDMI, shell prompt |
-| r1-smc | + SMC | SMC probe lines, hwmon |
-| r2-storage | + NVMe | `nvme0n1` and its partitions listed (read-only) |
-| r3-usb | + rear Type-C (atc0/atc1) | USB keyboard works |
-| r4-pcie | + PCIe (Wi-Fi/BT port 0, Ethernet port 2) | `eth0` (tg3) |
-| r5-atc23 | + atc2 (front hub) / atc3 | front USB-C ports enumerate |
+| stock | Gravity's own DTB (control) | console on HDMI, shell |
+| g0-boot | CPUs, AIC, PMGR, UART, watchdog, iBoot framebuffer | console on HDMI, shell prompt |
+| g1-smc | SMC | SMC probe lines, hwmon |
+| g2-storage | NVMe | `nvme0n1` and its partitions listed (read-only) |
+| g3-usb | all four USB-C controllers + front hub | USB keyboard works |
+| g4-pcie | PCIe (Wi-Fi/BT port 0, Ethernet port 2) | `eth0` (tg3) |
+| g5-cpufreq | CPU frequency scaling | stable under load |
+| g6-display | DCP native display | appledrm drives HDMI |
 
 ## Building
 
 On an arm64 machine with Docker (the mini itself under macOS works):
 
 ```sh
-tools/j773g-build.sh all      # image, source, config, DTBs, kernel, initramfs, m1n1
+tools/j773g-build.sh all      # image, source, config, DTBs, kernel, initramfs, m1n1 (Gravity base)
 tools/j773g-build.sh check    # dt-schema validation of every rung
 ```
 
@@ -90,7 +96,7 @@ Upstream integration and research by **studioxradio aka kb2uka**
 ([Omarchy-M4-Native](https://github.com/Kb2uka/Omarchy-M4-Native)); see
 [docs/upstream-README.md](docs/upstream-README.md) for the full credits to
 [Asahi Linux](https://asahilinux.org/), [m1n1](https://github.com/AsahiLinux/m1n1),
-[Gravity Linux](https://github.com/GravityLinux), [Omarchy](https://github.com/basecamp/omarchy)
+[Gravity Linux](https://github.com/GravityLinux) (whose J773g kernel and device tree this fork now builds on), [Omarchy](https://github.com/basecamp/omarchy)
 and others. J773g additions by Andrei Nita.
 
 New files carry SPDX lines: device trees `GPL-2.0+ OR MIT`, kernel patches

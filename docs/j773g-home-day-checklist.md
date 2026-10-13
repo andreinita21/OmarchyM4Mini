@@ -35,12 +35,13 @@ Copy the boot kit built on the mini (it is git-ignored, ~45 MB):
 
 ```sh
 # on the mini, before shutting it down:
-cd ~/OmarchyM4Mini && tar czf ~/j773g-kit.tgz build/j773g/{Image.gz,initramfs.cpio.gz,dtb,m1n1,m1n1-gravity,gravity}
+cd ~/OmarchyM4Mini && tar czf ~/j773g-kit.tgz build/j773g/{Image.gz,initramfs.cpio.gz,dtb,m1n1,m1n1-gravity}
 # copy ~/j773g-kit.tgz to the host (AirDrop / scp), then on the host:
 cd OmarchyM4Mini && tar xzf ~/j773g-kit.tgz
 ```
 
-Or rebuild it on the host if it is arm64 with Docker: `tools/j773g-build.sh all && tools/j773g-build.sh gravity`.
+Or rebuild it on the host if it is arm64 with Docker: `tools/j773g-build.sh all`
+(Gravity base by default; `BASE=asahi tools/j773g-build.sh all` for the legacy tree).
 
 ## 2. Get m1n1 onto the mini — APPROVAL
 
@@ -52,7 +53,7 @@ The Asahi installer does not support M4 yet. Options:
 
 | | Route | Disk changes | Notes |
 | --- | --- | --- | --- |
-| **A (recommended)** | Gravity Linux installer (`curl -fsSL https://install.gravitylinux.org \| sh` from macOS) | Shrinks macOS (installer's resize step), adds stub + EFI + Boot + Root partitions | Only J773g-supported installer. Installs Gravity Linux 44 KDE developer alpha, stub on macOS 26.6.2 firmware. Requires main macOS ≥ 26.6.2 (we have 27.0.1). Gives a known-good Linux to compare against. Has the macOS 27 boot-picker fix (`f` option) if the stub doesn't show up |
+| **A (chosen 2026-10-14)** | Gravity Linux installer (`curl -fsSL https://install.gravitylinux.org \| sh` from macOS) | Shrinks macOS (installer's resize step), adds stub + EFI + Boot + Root partitions | Only J773g-supported installer. Installs Gravity Linux 44 KDE developer alpha, stub on macOS 26.6.2 firmware. Requires main macOS ≥ 26.6.2 (we have 27.0.1). Gives a known-good Linux to compare against. Has the macOS 27 boot-picker fix (`f` option) if the stub doesn't show up |
 | B | Manual stub (Asahi m1n1 user guide) | Same shrink + a hand-made stub | No M4 tooling; high effort |
 | C | Upstream Omarchy's Air method: `kmutil configure-boot` on the **main** macOS volume | None to partitions, but macOS stops booting until `bputil -f` | Breaks the "macOS stays bootable" rule. Not recommended |
 
@@ -103,20 +104,20 @@ against PLAN.md.
 
 ## 5. The boot ladder (RAM only)
 
-One rung per boot, power-cycle the mini back into proxy mode between rungs.
-Plug a USB keyboard into a **back-left or back-right** port before r3
-(the back-middle port carries the host cable).
+Kernel and DTBs are built from GravityLinux `gravity-m4` (PLAN.md section 3).
+One rung per boot; power-cycle the mini back into proxy mode between rungs.
+Plug a USB keyboard into a **back-left or back-right** port before g3 (the
+back-middle port carries the host cable). Audio is off in every rung.
 
 ```sh
-# known-good control first: Gravity's kernel + DT, simpledrm console
-BOOT_KIT=$PWD/build/j773g tools/boot.sh build/j773g/gravity/t8132-j773g.dtb gravity-control build/j773g/gravity/Image.gz
-
-tools/j773g-boot.sh r0-boot      # expect: penguin, "=== J773g initramfs", a shell prompt
-tools/j773g-boot.sh r1-smc       # + macsmc probe lines
-tools/j773g-boot.sh r2-storage   # + nvme0n1 in /proc/partitions (read-only; nothing mounts it)
-tools/j773g-boot.sh r3-usb       # keyboard types in the shell
-tools/j773g-boot.sh r4-pcie      # `ip link` shows eth0 (tg3)
-tools/j773g-boot.sh r5-atc23     # keyboard on a front port works
+tools/j773g-boot.sh stock        # control: Gravity's own J773g DTB
+tools/j773g-boot.sh g0-boot      # expect: penguin, "=== J773g initramfs", a shell prompt
+tools/j773g-boot.sh g1-smc       # + macsmc probe lines
+tools/j773g-boot.sh g2-storage   # + nvme0n1 in /proc/partitions (read-only; nothing mounts it)
+tools/j773g-boot.sh g3-usb       # keyboard types in the shell (all ports incl. front)
+tools/j773g-boot.sh g4-pcie      # `ip link` shows eth0 (tg3)
+tools/j773g-boot.sh g5-cpufreq   # still alive after `yes > /dev/null &` x4 for a minute
+tools/j773g-boot.sh g6-display   # appledrm takes over HDMI from simpledrm
 ```
 
 After each attempt append an entry to NOTES.md (format in START_HERE.md
@@ -125,14 +126,14 @@ ideal), and the boot log path printed by the script.
 
 If a rung is black:
 
-1. Boot the Gravity control. If that is also black → boot chain / m1n1 /
-   firmware problem, not our DT. Try the other m1n1 flavour.
-2. If the control works and r0 does not → compare r0 with the control's DT
-   (framebuffer node, power domains). Our kernel is Asahi 77cb8f24c2 +
-   upstream M4 hacks; Gravity's kernel is newer.
-3. The m1n1 hypervisor is gaining M4 support upstream (2026-09/10); if it
-   works now, `run_guest.py` gives a console over USB. Try it only after
-   1 and 2.
+1. Boot `stock`. If that is also black → boot chain / m1n1 / firmware
+   problem, not the ladder. Try the other m1n1 flavour (section 3).
+2. Warm-reboot into proxy mode and boot `g0-boot`: the initramfs prints the
+   previous boot's console from pstore (ramoops) if RAM survived.
+3. Try `M4_HACKS=1 tools/j773g-build.sh kernel` (upstream's Air boot hacks)
+   only if Gravity's kernel misbehaves where upstream's did not.
+4. The m1n1 hypervisor is gaining M4 support upstream (2026-09/10); if it
+   works now, `run_guest.py` gives a console over USB. Try it last.
 
 ## 6. Afterwards
 
