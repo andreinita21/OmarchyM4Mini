@@ -35,10 +35,14 @@ Copy the boot kit built on the mini (it is git-ignored, ~45 MB):
 
 ```sh
 # on the mini, before shutting it down:
-cd ~/OmarchyM4Mini && tar czf ~/j773g-kit.tgz build/j773g/{Image.gz,initramfs.cpio.gz,dtb,m1n1,m1n1-gravity}
+cd ~/OmarchyM4Mini && tar czf ~/j773g-kit.tgz build/j773g/{Image.gz,Image-gpu.gz,initramfs.cpio.gz,dtb,m1n1,m1n1-gravity}
 # copy ~/j773g-kit.tgz to the host (AirDrop / scp), then on the host:
 cd OmarchyM4Mini && tar xzf ~/j773g-kit.tgz
 ```
+
+If the kit was built with `WITH_FIRMWARE=1` (Wi-Fi firmware from
+`tools/j773g-wifi-fw.sh`), its initramfs contains Apple firmware: copy it
+only to your own host, never publish it.
 
 Or rebuild it on the host if it is arm64 with Docker: `tools/j773g-build.sh all`
 (Gravity base by default; `BASE=asahi tools/j773g-build.sh all` for the legacy tree).
@@ -68,6 +72,11 @@ Route A, step by step (on the mini, in macOS, with time to spare):
 3. Boot the stub once and check that Gravity Linux reaches its desktop on
    HDMI. That proves m1n1 + firmware + DT on this unit. Note anything odd in
    NOTES.md.
+4. Known Gravity issue on this unit: its installer installs the `V-u`
+   Wi-Fi NVRAM, but this mini's module is `V=a`
+   ([draft report](j773g-gravity-issue-drafts.md)). Wi-Fi under Gravity may
+   be miscalibrated. Prefer Ethernet there, and don't spend time debugging
+   Gravity's Wi-Fi.
 
 ## 3. Put the mini into m1n1 proxy mode — APPROVAL (writes the EFI partition)
 

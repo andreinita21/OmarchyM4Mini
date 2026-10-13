@@ -18,6 +18,8 @@
 #   BASE=asahi             legacy Asahi 77cb8f24c2 tree, rungs r0..r5,
 #                          artifacts under build/j773g/asahi/
 #   M4_HACKS=1             add upstream's m4-boot-hacks patch (gravity base)
+#   WITH_FIRMWARE=1        initramfs includes private/firmware (Wi-Fi; see
+#                          tools/j773g-wifi-fw.sh). Private output.
 #   JOBS, M1N1_REF, GRAVITY_SHA
 # Source trees live in the Docker volume "j773g-src" (case-sensitive, fast);
 # only artifacts land in the git-ignored build/ directory.
@@ -32,7 +34,7 @@ fi
 mkdir -p "$REPO/build/j773g"
 TTY=(); [[ -t 0 ]] && TTY=(-it)
 exec docker run --rm ${TTY[@]+"${TTY[@]}"} \
-  -e JOBS -e M1N1_REF -e BASE -e GRAVITY_SHA -e M4_HACKS -e M1N1_FLAVOUR \
+  -e JOBS -e M1N1_REF -e BASE -e GRAVITY_SHA -e M4_HACKS -e WITH_FIRMWARE -e M1N1_FLAVOUR \
   -v j773g-src:/src \
   -v "$REPO":/repo:ro \
   -v "$REPO/build/j773g":/out \

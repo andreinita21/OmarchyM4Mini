@@ -110,7 +110,7 @@ console if any, partitions, links, then a shell.
 | g1-smc | +SMC | macsmc probe lines, hwmon | screen |
 | g2-storage | +STORAGE | `nvme0n1` + partitions listed (nothing mounts it) | screen |
 | g3-usb | +USB | keyboard types in the shell (any port) | keyboard |
-| g4-pcie | +PCIE | `eth0` (tg3); Wi-Fi needs firmware | `ip link` |
+| g4-pcie | +PCIE | `eth0` (tg3); `wlan0` if the initramfs was built with `WITH_FIRMWARE=1` | `ip link` |
 | g5-cpufreq | +CPUFREQ | no hang under load; `/sys/devices/system/cpu/cpufreq` | keyboard |
 | g6-display | +DISPLAY | appledrm takes over HDMI from simpledrm | screen |
 | g7-poweroff | +PMU (`dts/t8132-j773g-pmu.dtsi`, not in Gravity) | `poweroff -f` leaves the mini off; RTC readable | LED off |
@@ -153,7 +153,10 @@ Still open:
   values from this mini's ioreg) in `dts/t8132-j773g-pmu.dtsi`, rung
   g7-poweroff, see `docs/j773g-poweroff.md`. Needs a hardware test.
 - Whether the m1n1 hypervisor now works on T8132 (fixes landing upstream).
-- Wi-Fi/BT firmware for BCM4388 C2 "sakhalin" (Gravity's fwextract).
+- Wi-Fi: this unit's firmware set (module V=a, antenna X3) is extracted
+  by `tools/j773g-wifi-fw.sh` into private/; Gravity's installer would
+  install the V=u NVRAM instead (`docs/j773g-gravity-issue-drafts.md`).
+  Bluetooth needs per-unit calibration (BTBF), later.
 - Speaker safety: Gravity's in-kernel limiter reviewed in
   `docs/j773g-speaker-safety.md`; audio stays off until the AID36 preset
   decode is independently checked.

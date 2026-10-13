@@ -12,7 +12,7 @@ echo
 echo "=== J773g initramfs: $(uname -r) ==="
 cat /proc/cmdline
 echo "=== probe results ==="
-dmesg | grep -i -E 'macsmc|smc[-_]|rtkit|sart|nvme|dwc3|atcphy|sn201202|tps6598|typec|dart|apple-pcie|pcie-apple|tg3|brcmfmac|xhci|usb [0-9]|input:|simpledrm|fbcon|apple-drm|dcp|cpufreq|pstore|ramoops|error|fail|timed out|timeout' | grep -v -E 'SMC Calling|RPC:' | tail -40
+dmesg | grep -i -E 'macsmc|smc[-_]|rtkit|sart|nvme|dwc3|atcphy|sn201202|tps6598|typec|dart|apple-pcie|pcie-apple|tg3|brcmfmac|wlan|xhci|usb [0-9]|input:|simpledrm|fbcon|apple-drm|dcp|cpufreq|pstore|ramoops|error|fail|timed out|timeout' | grep -v -E 'SMC Calling|RPC:' | tail -40
 mkdir -p /sys/fs/pstore
 if mount -t pstore pstore /sys/fs/pstore 2>/dev/null && [ -n "$(ls /sys/fs/pstore)" ]; then
   echo "=== previous boot (pstore: $(ls /sys/fs/pstore | tr '\n' ' ')) ==="

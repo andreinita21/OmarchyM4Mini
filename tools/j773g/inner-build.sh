@@ -190,7 +190,7 @@ cmd_kernel_gpu() {
   fi
   git -C "$W" -c advice.detachedHead=false checkout -q -f "$(git -C "$L" rev-parse HEAD)"
   make -C "$W" -s ARCH=arm64 LLVM=1 "${RUSTVARS[@]}" rustavailable
-  [[ -f $W/.config ]] || merge_and_check "$W" /repo/tools/j773g/kernel.fragment /repo/tools/j773g/kernel-gpu.fragment
+  merge_and_check "$W" /repo/tools/j773g/kernel.fragment /repo/tools/j773g/kernel-gpu.fragment
   log "building GPU Image.gz with $JOBS jobs"
   make -C "$W" -s ARCH=arm64 LLVM=1 "${RUSTVARS[@]}" -j"$JOBS" Image.gz
   cp "$W/arch/arm64/boot/Image.gz" "$O/Image-gpu.gz"
@@ -204,6 +204,14 @@ cmd_initramfs() {
   mkdir -p "$d"/{bin,dev,proc,sys,tmp,mnt,root}
   cp /bin/busybox "$d/bin/busybox"
   cp /repo/tools/j773g/init "$d/init"
+  # WITH_FIRMWARE=1: add private/firmware (Apple Wi-Fi firmware from
+  # tools/j773g-wifi-fw.sh). The result is private: never publish it.
+  if [[ ${WITH_FIRMWARE:-0} == 1 ]]; then
+    [[ -d /repo/private/firmware ]] || { echo "no private/firmware; run tools/j773g-wifi-fw.sh" >&2; exit 2; }
+    mkdir -p "$d/lib/firmware"
+    cp -r /repo/private/firmware/. "$d/lib/firmware/"
+    log "initramfs includes private firmware: $(cd "$d/lib/firmware" && find . -type f | wc -l) files"
+  fi
   chmod 755 "$d/init"
   mknod -m 600 "$d/dev/console" c 5 1 2>/dev/null || true
   mknod -m 666 "$d/dev/null" c 1 3 2>/dev/null || true
