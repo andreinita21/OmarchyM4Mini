@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * J773g layer: display controller (HDMI through dispext0 / dcpext0).
+ *
+ * Upstream T8132 has NO DCP nodes yet; scanout stays on the iBoot framebuffer
+ * via simpledrm (boot layer). This layer only records what the real display
+ * path will need, modelled on t8112-j473.dts (M2 Mac mini), and offers one
+ * optional experiment.
+ *
+ * UNVERIFIED (ioreg 2026-10-13, addresses translated by arm-io range 0):
+ *   dispext0      0x2_84000000/0xc20000, "external", IRQs 741 760 744 743
+ *                 749 739 748; iommus dart-dispext0 (sid 0,16) + dart-dcpext0
+ *   dart-dispext0 0x2_86300000/0xc000  IRQ 750   dart-id 0x13
+ *   dart-dcpext0  0x2_86340000/0x20000 IRQ 750   dart-id 0x12, sid 0x17
+ *   dcpext0       0x2_86e00000/0x88000 iop,ascwrap-v6 role DCPEXT0,
+ *                 IRQs 732 731 734 733 (mailbox), sram 0x2_86850000/0x4000
+ *   dptx-phy      0x3_9a740000/0x10000 + 0x3_9a700000/0x4000,
+ *                 compatible dptx-phy,t8122, port-number 1
+ *   display-crossbar0 dfp-endpoints atc0 atc1 atc2 atc3 lpdptx dptx
+ *   dp2hdmi-gpio0 (the DP->HDMI converter control):
+ *       hdmi_hpd        = aop-gpio pin 41 (interrupt)       -> &pinctrl_aop 41
+ *       hdmi_pwr_en     = SMC key gP0f -> &smc_gpio 15
+ *       dp2hdmi_pwr_en  = SMC key gP1a -> &smc_gpio 26
+ *       reset           = SMC key gP10 -> &smc_gpio 16
+ *       force_dpfu      = aop-gpio pin 36
+ *     (SMC pin numbers use the two-hex-digit rule from upstream patch 0014.)
+ *   disp0 / dcp (internal-panel path) exist in silicon with no sink:
+ *     disp0 0x3_08000000, dcp 0x3_0ae00000 role DCP.
+ *   dispext1 / dcpext1 exist (0x2_88000000 / 0x2_8ae00000); no port.
+ *
+ * Future node sketch (do not enable until T8132 DCP nodes exist upstream):
+ *   &dcpext0 { apple,connector-type = "HDMI-A";
+ *              hdmi-hpd-gpios = <&pinctrl_aop 41 GPIO_ACTIVE_HIGH>;
+ *              hdmi-pwren-gpios = <&smc_gpio 15 GPIO_ACTIVE_HIGH>;
+ *              dp2hdmi-pwren-gpios = <&smc_gpio 26 GPIO_ACTIVE_HIGH>;
+ *              phys = <&dptxphy>; phy-names = "dp-phy"; apple,dptx-phy = <5>; }
+ *   The apple,dptx-phy index and GPIO polarities are INHERITED from J473.
+ */
+
+/*
+ * Optional experiment (J473 precedent): the mini scans out through dispext0,
+ * so the disp0 always-on markings in t8132-pmgr.dtsi protect nothing here.
+ * Leave them in place for the first boots; try removing only once the HDMI
+ * shell is stable, one boot, to see whether anything regresses.
+ */
+#ifdef J773G_EXPERIMENT_DISP0_OFF
+&ps_disp_sys {
+	/delete-property/ apple,always-on;
+};
+
+&ps_disp_fe {
+	/delete-property/ apple,always-on;
+};
+#endif
