@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * J773g layer: SMC and its mailbox.
+ *
+ * Needed before PCIe (pwren GPIOs) and HDMI (hdmi/dp2hdmi pwren GPIOs) and
+ * for poweroff/hwmon. Nodes come from upstream patch 0001 (SoC level).
+ *
+ * VERIFIED-J713: smc 0x3_8c600000/0x4000 + sram 0x3_8de00000/0x100000,
+ *   mailbox 0x3_8c608000, IRQs 562/561/564/563 (audit rows MATCH).
+ * UNVERIFIED on J773g: ioreg shows smc@8C600000 (translated 0x3_8c600000)
+ *   with children smc-pmu, smc-charger-util-0/1/3 (one per Thunderbolt
+ *   port), smctempsensor0 — same wrapper, same mailbox window pattern.
+ *   IRQ numbers to be re-read from the live ADT before the first SMC boot.
+ *
+ * Known upstream issue: SMC shutdown restarts the J713 (upstream #24);
+ * expect the same here until proven otherwise. Do not add the J713
+ * poweroff overlay (patches/j713-smc-poweroff.dtso) unqualified.
+ */
+
+&smc_mbox {
+	status = "okay";
+};
+
+&smc {
+	status = "okay";
+};
