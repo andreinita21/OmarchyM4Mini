@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * Apple Mac mini (M4, 2024) — Mac16,10 / J773g / T8132 — layered bring-up tree
+ *
+ * target-type: J773g
+ *
+ * This is the OmarchyM4Mini working tree, NOT the Asahi board file. It starts
+ * from Asahi's t8132-j773g.dts (asahi branch, commit fbf2e630a9, 2026-07-05:
+ * compatible, model, framebuffer power domains) and adds one subsystem per
+ * include so each can be switched on separately for a RAM-only boot attempt.
+ *
+ * Build with the C preprocessor, like the kernel does (see tools/mkdtb.sh
+ * upstream). Each layer is gated on a -D flag so the same source builds any
+ * subset:
+ *
+ *   -DJ773G_LAYER_SMC         SMC + mailbox (smc_gpio provider for later layers)
+ *   -DJ773G_LAYER_STORAGE     ANS mailbox, SART, NVMe (split-window node)
+ *   -DJ773G_LAYER_USB         Type-C ports 0/1: DWC3, DARTs, ATC PHYs, SPMI PD
+ *   -DJ773G_LAYER_USB_ATC23   adds ATC2 (front USB-C via GL3590 hub) and ATC3
+ *   -DJ773G_LAYER_PCIE        PCIe root: Wi-Fi/BT on port 0, Ethernet on port 2
+ *   -DJ773G_LAYER_THUNDERBOLT no Linux binding yet; addresses recorded only
+ *   -DJ773G_LAYER_DISPLAY     dispext0/dcpext0 HDMI path; disp0 always-on relief
+ *
+ * No flags = the boot layer: CPUs, AIC, PMGR, watchdog, pinctrl, UART and the
+ * iBoot framebuffer that m1n1 fills into /chosen/framebuffer@0 (HDMI scanout
+ * through simpledrm). That is the first boot attempt.
+ *
+ * Evidence levels used in every layer:
+ *   VERIFIED-J713   value proven on the M4 Air by upstream (Kb2uka) hardware
+ *                   runs or its live-ADT audit; shared T8132 silicon.
+ *   UNVERIFIED      value read from this mini's macOS IORegistry
+ *                   (private/iodevicetree-j773g.txt, 2026-10-13), not yet from
+ *                   a live ADT dumped through m1n1 and not yet booted.
+ *   INHERITED       Linux binding structure copied from a T8112/T602x
+ *                   precedent; no ADT property proves it either way.
+ *
+ * Requires upstream's T8132 SoC patches (patches/0001..0010, 0012, 0013,
+ * 0015) applied to t8132.dtsi. Do NOT apply the J713 board patches 0011,
+ * 0014 and 0016 to this tree: the mini has all four ATC instances (0011),
+ * has no MTP (0014), and 0016 is re-expressed here in the storage layer.
+ */
+
+/dts-v1/;
+
+#include "t8132.dtsi"
+#include "t8132-jxxx.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	compatible = "apple,j773g", "apple,t8132", "apple,arm-platform";
+	model = "Apple Mac mini (M4, 2024)";
+	chassis-type = "desktop";
+};
+
+/*
+ * Boot layer. The mini has no internal panel. iBoot drives HDMI through
+ * dispext0 + the DP-to-HDMI converter behind dptx-phy; keep exactly those
+ * domains on while simpledrm owns the framebuffer. Same as Asahi's board file.
+ * UNVERIFIED on this unit: ioreg shows dispext0 "external", dptx-phy
+ * port-number 1 and port-hdmi-1; dispext1 is present but has no sink.
+ */
+&framebuffer0 {
+	power-domains = <&ps_dispext0_cpu>, <&ps_dptx_phy>;
+};
+
+/*
+ * I2C inventory (UNVERIFIED, from ioreg): i2c0, i2c1, i2c2 (ATC retimers
+ * atcrt0/1/3) and i2c3 exist; i2c4 does not. All stay disabled in the boot
+ * layer; nothing on them is needed for a shell.
+ */
+
+#ifdef J773G_LAYER_SMC
+#include "t8132-j773g-smc.dtsi"
+#endif
+
+#ifdef J773G_LAYER_STORAGE
+#include "t8132-j773g-storage.dtsi"
+#endif
+
+#ifdef J773G_LAYER_USB
+#include "t8132-j773g-usb.dtsi"
+#endif
+
+#ifdef J773G_LAYER_PCIE
+#include "t8132-j773g-pcie.dtsi"
+#endif
+
+#ifdef J773G_LAYER_THUNDERBOLT
+#include "t8132-j773g-thunderbolt.dtsi"
+#endif
+
+#ifdef J773G_LAYER_DISPLAY
+#include "t8132-j773g-display.dtsi"
+#endif
