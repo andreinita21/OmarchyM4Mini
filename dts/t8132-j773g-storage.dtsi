@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * J773g layer: internal NVMe (ANS2 coprocessor, SART, split-window controller).
+ *
+ * SoC nodes come from upstream patches 0001 + 0013 (split NVMe/NVMMU windows)
+ * + 0015 (ANS mailbox IRQ roles). Both fixes were hardware-proven on J713 and
+ * the mini's ANS node looks identical in ioreg:
+ *
+ * UNVERIFIED (ioreg, /arm-io/ans@81600000):
+ *   interrupts = <1004 1003 1006 1005 1018>, nvme-interrupt-idx = 4,
+ *   role "ANS2", iop,ascwrap-v6, nvme-secure-bar present (empty),
+ *   reg[0] 0x2_81600000/0x88000, reg[3] 0x2_85cc0000/0x60000 (NVMMU),
+ *   reg[9] 0x2_c5cc0000 (controller secure BAR), all +0x2_00000000
+ *   translated by arm-io range 0 to the 0x4_... addresses in t8132.dtsi.
+ *   sart-ans: sart,coastguard, sart-version 3, reg[0] 0x2_85c50000/0xc000,
+ *   ANS iommu-parent -> sart-ans. PMGR: ANS psidx 5 off 7 (0x538),
+ *   APCIE_ST 0x540 parent ANS, APCIE_SYS_ST 0x548 parents ANS+APCIE_ST.
+ *   All equal to the J713 audit values.
+ *
+ * Power domains: J713 needed APCIE_SYS_ST instead of APCIE_ST to avoid an
+ * RTKit SError before controller init (upstream patch 0016, J713-proven,
+ * J773g UNVERIFIED). Same override here, at board level.
+ */
+
+&ans_mbox {
+	status = "okay";
+};
+
+&sart {
+	status = "okay";
+};
+
+&nvme {
+	power-domains = <&ps_ans>, <&ps_apcie_sys_st>;
+	status = "okay";
+};
