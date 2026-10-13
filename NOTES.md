@@ -206,3 +206,37 @@ Result / last log line: no boot attempted.
 Next step: build Gravity's gravity-m4 kernel + its t8132-j773g.dtb as a
   known-good control for the home day; write docs/j773g-research.md and
   docs/j773g-home-day-checklist.md; update PLAN.md.
+
+## 2026-10-14 00:10 — setup 4 (control kernel, docs; offline work finished)
+Model/effort: Opus 5.5 / medium
+Changed:
+- tools/j773g-build.sh gravity: GravityLinux/linux gravity-m4 @ 4fc326f6c2
+  (7.1.13) built with our fragment -> build/j773g/gravity/{Image.gz,
+  t8132-j773g.dtb}. Has the idle= early_param too. This is the known-good
+  control for the first boot (their DT has booted Fedora on an M4 mini).
+- M1N1_FLAVOUR=gravity: GravityLinux/bootloader @ 7243b815c4 ->
+  build/j773g/m1n1-gravity/. Asahi m1n1 now builds to build/j773g/m1n1/
+  from /src/m1n1-asahi (old /src/m1n1 in the volume is unused).
+- docs/j773g-research.md (answers PLAN section 7 with sources),
+  docs/j773g-home-day-checklist.md (recovery path, host setup, stub route
+  options with Gravity installer recommended, proxy-mode stage 2 swap,
+  ADT dump, ladder commands, black-screen triage). PLAN.md updated (phase
+  table, open questions, Wi-Fi = BCM4388 C2). README status updated.
+- Gravity's CDN installer offers one target only: "Gravity Linux 44 KDE —
+  M4 developer alpha (20260920)", EFI 500 MB + Boot 1 GB + Root >= 16 GB,
+  stub firmware 26.6.2, stage 1 chainloads <ESP>/m1n1/boot.bin.
+- GravityLinux/adt-collection has no J773g ADT (J700, J813, J313 only).
+- Correction to setup 3: "PLAN.md updated" there happened in this step.
+Result / last log line: no boot attempted. Nothing written to the mini's
+  disk layout, partitions, boot policy or ESP. Installed software: Homebrew
+  dtc; Docker image omarchy-j773g-build; Docker volume j773g-src (~6 GB).
+Diagnosis: n/a. Every remaining step needs Andrei (hardware or approval).
+Next step (Andrei):
+  1. Read docs/j773g-home-day-checklist.md. Decide the stub route (A =
+     Gravity installer, recommended) — it shrinks macOS: APPROVAL.
+  2. Still pending from setup 0: confirm the repo description
+     (gh repo edit) and whether to reflow START_HERE.md; whether to post
+     docs/j773g-upstream-issue-draft.md.
+  3. Strategic choice after the first control boot: keep Asahi 77cb8f24c2 +
+     upstream patches, or rebase the J773g layers on Gravity's gravity-m4.
+  4. Phase 1 step 7 (live ADT diff) on Fable 5.1 / high after the dump.

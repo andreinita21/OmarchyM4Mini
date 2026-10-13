@@ -29,7 +29,8 @@ Basecamp, Asahi Linux, Gravity Linux, Apple, or Kb2uka.
 | --- | --- |
 | macOS-side recon (ioreg / IODeviceTree), preliminary plan | done — [PLAN.md](PLAN.md) |
 | Layered J773g device tree, offline-validated (dtc + dt-schema) | done — [dts/](dts/) |
-| Containerised kernel / DTB / initramfs / m1n1 build | done — [tools/j773g-build.sh](tools/j773g-build.sh) |
+| Containerised kernel / DTB / initramfs / m1n1 build, plus a GravityLinux control kernel | done — [tools/j773g-build.sh](tools/j773g-build.sh) |
+| Research: ports, front hub, PCIe power, Wi-Fi chip, stub install | done — [docs/j773g-research.md](docs/j773g-research.md) |
 | m1n1 stub on the mini, live ADT dump through m1n1 | not started (needs a second machine and the owner's go-ahead) |
 | First RAM-only boot to a busybox shell on HDMI | not started |
 
