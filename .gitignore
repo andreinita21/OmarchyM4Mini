@@ -13,3 +13,6 @@ CLAUDE.md
 recon/*
 !recon/README.md
 !recon/pmgr-j713-generated-from-live-adt.dtsi
+
+# Local hardware captures (ADT/ioreg dumps, firmware, logs) never enter the tree.
+private/
