@@ -12,7 +12,7 @@ echo
 echo "=== J773g initramfs: $(uname -r) ==="
 cat /proc/cmdline
 echo "=== probe results ==="
-dmesg | grep -i -E 'smc|nvme|sart|ans|dwc3|atcphy|tps6598|typec|dart|pcie|tg3|brcmfmac|xhci|hid|input|simpledrm|error|fail|timeout' | tail -40
+dmesg | grep -i -E 'macsmc|smc[-_]|rtkit|sart|nvme|dwc3|atcphy|sn201202|tps6598|typec|dart|apple-pcie|pcie-apple|tg3|brcmfmac|xhci|usb [0-9]|input:|simpledrm|fbcon|error|fail|timed out|timeout' | grep -v -E 'SMC Calling|RPC:' | tail -40
 echo "=== block devices ==="
 cat /proc/partitions
 echo "=== network ==="

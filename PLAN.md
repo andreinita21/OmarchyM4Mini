@@ -1,7 +1,9 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # PLAN — Linux bring-up on the base M4 Mac mini (Mac16,10 / J773g / T8132)
 
-Status: **preliminary plan, 2026-10-13** (Fable 5.1 / high). Based on the
+Status: **preliminary plan, 2026-10-13** (Fable 5.1 / high); facts updated
+2026-10-14 (Opus 5.5) from web research and GravityLinux's hardware-tested
+J773g tree — see `docs/j773g-research.md`. Based on the
 macOS IORegistry dump of this mini (`private/iodevicetree-j773g.txt`, the
 ADT as macOS exposes it), upstream's J713 patches and audit, and Asahi's own
 `t8132-j773g.dts`. Every mini-specific value is **UNVERIFIED** until the live
@@ -36,7 +38,7 @@ P), 16 GB, iBoot 20457.1.29, Wi-Fi module instance "sakhalin".
 | Storage | ANS2 split window, IRQs 1004/1003/1006/1005/1018 | identical (nvme-secure-bar, sart v3, same PMGR offsets) | Patches 0001, 0013, 0015 apply; 0016 re-expressed at board level |
 | SMC | 0x3_8c600000, IRQs 562/561/564/563 | identical; charger-util 0/1/3 (one per TB port) | Patch 0001 applies; shutdown issue (#24) expected too |
 | PCIe | port 0 (Wi-Fi/BT) only; one DART | port 0 Wi-Fi/BT (**same pins 160/163, SIDs 1/2**) + **port 2 Ethernet** BCM57762 (pci14e4,1682, tg3), own DART 0x4_92000000 IRQ 1250 SID 1, pins 162/165 | Patch 0007 applies; add pcie2_dart, port02, aliases |
-| Display | internal panel on disp0/dcp | **no panel**; HDMI via dispext0/dcpext0 + dptx-phy + DP→HDMI converter (HPD aop-gpio 41, pwr-en SMC gP0f/gP1a, reset gP10); dispext1 unused | Boot layer keeps `ps_dispext0_cpu` + `ps_dptx_phy` on (Asahi's j773g.dts). DCP later |
+| Display | internal panel on disp0/dcp | **no panel**; HDMI via dispext0/dcpext0 + dptx-phy + DP→HDMI converter (HPD aop-gpio 41, pwr-en SMC gP0f/gP1a, reset gP10); dispext1 unused | Boot layer keeps `ps_dispext0_fe` + `ps_dptx_phy` on (Gravity's fix; Asahi's `_cpu` domain defers simpledrm). DCP later |
 | Input | MTP keyboard/trackpad | **no MTP, no dockchannel-mtp** | Patches 0008, 0014 and the AFE/input kernel patches are irrelevant |
 | I2C | i2c1, i2c2, i2c3 (no i2c0/i2c4) | **i2c0**, i2c1, i2c2, i2c3 (no i2c4) | i2c4 stays disabled; i2c0 exists but has no children |
 | Audio | 6 speakers, J713 safety profile | **1 speaker amp TI SN012776 @ i2c3 0x38** (IRQ gpio0 14), jack codec **CS42L84 @ i2c1 0x4b** (IRQ gpio0 98), dp-audio0/1/2, MCA | Same topology as the M2 mini (t8112-j473); needs its own safety data |
@@ -62,7 +64,7 @@ models; the mini speaker hardware is one SN012776 (TAS2764 family).
 | patches-kernel/m4-boot-hacks-7.1.9.patch | kernel | **required** (idle=nop, WFxT delay, AIC EL2 writes) |
 | patches-kernel/nvme-apple-t8132-split-nvmmu.patch | kernel | required with 0013 |
 | patches-kernel/j713-input/*, j713-smc-reboot-optional-nvmem | kernel | input: irrelevant; smc-reboot: evaluate with SMC layer |
-| patches-kernel/brcmfmac-bcm4388-rev6-c2-v116.patch | kernel | the mini has BCM4387; check whether it is needed at all |
+| patches-kernel/brcmfmac-bcm4388-rev6-c2-v116.patch | kernel | the mini has **BCM4388 C2** (14e4:4434, "sakhalin"), so likely needed for Wi-Fi |
 
 Base kernel: Asahi `asahi` branch at 77cb8f24c2 (upstream's 7.1.9 freeze
 point) which already contains `t8132.dtsi`, `t8132-jxxx.dtsi`,
@@ -115,20 +117,28 @@ there is no virtual UART; fall back to bisecting the boot layer itself
 | 1 | Fork, branch j773g | mini (macOS) | done | done 2026-10-13 |
 | 2 | macOS recon, ioreg + device-tree plane into `private/` | mini (macOS) | done | done 2026-10-13 |
 | 2b | Preliminary layered DT + this plan | anywhere | Fable 5.1 high | done 2026-10-13 |
-| 2c | Validate DT offline (`dtc`, `dtbs_check`), build env proposal, kernel + initramfs + m1n1 builds, host scripts, research, home-day checklist, README | mini (macOS, no hardware steps) | Opus 5.5 medium | **next** |
-| 3 | Shrink macOS partition, install m1n1 stub (reduced security) | mini, **Andrei's approval first** | Andrei + Opus | not started |
-| 4 | Host: clone fork, m1n1 proxyclient (`/usr/bin/python3` + pyserial + construct) | host | Opus | not started |
-| 5 | Kernel builds: native on the mini (proposal pending) or server | mini/server | Opus | not started |
+| 2c | Validate DT offline (`dtc`, `dtbs_check`), build env, kernel + initramfs + m1n1 builds, host scripts, research, home-day checklist, README | mini (macOS, no hardware steps) | Opus 5.5 medium | done 2026-10-14 |
+| 3 | Shrink macOS partition, install m1n1 stub — recommended via the Gravity Linux installer (only J773g-capable installer), then stage 2 = plain m1n1 for proxy mode | mini, **Andrei's approval first** | Andrei + Opus | not started; steps in `docs/j773g-home-day-checklist.md` |
+| 4 | Host: clone fork, m1n1 proxyclient (`python3` + pyserial 3.5 + construct 2.10.70), copy the boot kit | host | Opus | not started |
+| 5 | Kernel builds: Docker on the mini (`tools/j773g-build.sh`), ~6 min full build | mini | Opus | done 2026-10-14 |
 | 6 | Boot mini into m1n1 proxy, dump real ADT into `private/` | host + mini | Opus | not started |
 | 7 | Diff live ADT vs this plan; final PLAN.md | host | Fable 5.1 high | not started |
 
 ## 7. Open questions
 
-- Which rear port is the m1n1 debug/proxy (DFU) port on J773g, and which
-  ATC instance each physical port maps to (hpm port-number 1/2/4).
-- Whether the GL3590 front-port hub boots from its own SPI NOR without OS
-  help (if not, a spi3 + firmware path is needed before front USB works).
-- pwren-gpios for PCIe ports (J473 uses SMC GPIOs; none visible in ioreg).
-- Whether upstream's brcmfmac BCM4388 patch matters for the mini's BCM4387.
-- HPM "select" IRQs 13/39/65 (inherited inference).
-- SMC shutdown-restarts issue on the mini.
+Answered 2026-10-14 (details and sources in `docs/j773g-research.md`):
+DFU/proxy port = back-middle = atc0 (back-left atc1, back-right atc3, front
+ports via hub on atc2); the GL3590 hub boots from its own NOR once GPIO 101
+(flash OE) and 198 (reset) are driven high; port 0 pwren = SMC GPIO 19
+(inherited from Gravity); Wi-Fi is BCM4388 C2 so the 4388 patch matters;
+HPM select IRQs 13/39/65 match Gravity's hardware-tested values.
+
+Still open:
+- Whether the front ports also need Gravity's ATC PHY driver properties
+  (`apple,fixed-usb3`, `apple,fixed-lane-swap`), absent from Asahi 77cb8f24c2.
+- SMC shutdown on the mini (the Air needed four NVMEM cells, upstream PR #48).
+- Whether the m1n1 hypervisor now works on T8132 (fixes landing upstream).
+- Strategic: rebase the J773g work on GravityLinux's `gravity-m4` kernel
+  instead of Asahi 77cb8f24c2 + upstream's J713-era patches? Their tree
+  already boots this machine with DCP, GPU and NVMe. Decide after the
+  control boot (`tools/j773g-build.sh gravity`).
