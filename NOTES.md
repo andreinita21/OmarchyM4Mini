@@ -274,3 +274,37 @@ Next step: offline items: SMC poweroff NVMEM cells for J773g from this
   mini's ioreg; Wi-Fi 4388 C2 support check in gravity-m4; speaker-safety
   review notes for Gravity's apple,j773g-speaker (documentation only);
   Rust-enabled GPU kernel build.
+
+## 2026-10-14 01:48 — setup 6 (poweroff rung, GPU kernel, Wi-Fi firmware, reviews)
+Model/effort: Opus 5.5 / medium
+Changed:
+- PMU/poweroff: Gravity's T8132 SMC node has no smc-reboot/smc-rtc child
+  and there is no main-PMU SPMI node. Added dts/t8132-j773g-pmu.dtsi (nub-
+  spmi0 0x3_88714000, Abbey USID 0xe fixed NVMEM, the four shutdown-state
+  cells from upstream PR #48, smc-rtc rtc_offset) - every offset matches
+  this mini's ioreg pmu-main@E. Rung g7-poweroff; docs/j773g-poweroff.md.
+  Only new schema note: apple,abbey-pmic not in the PMIC binding.
+- GPU: Debian rustc 1.85.1 / bindgen 0.71.1 added to the image (kernel
+  minimums; rustup 1.99 stays for m1n1). kernel-gpu step builds
+  Image-gpu.gz (RUST=y, DRM_ASAHI_M4=y) in a worktree; rung g8-gpu uses it.
+  Needs Gravity's m1n1 (supplies T8132 GPU firmware/platform data).
+- Wi-Fi: Gravity's brcmfmac already has BSS v116 + C2-as-4388c0 names, so
+  upstream's brcmfmac patch is not needed. **This unit's module is V=a,
+  antenna X3**; macOS loads P-sakhalin-X3_M-WLMT_V-a__m-4.9.txt. Gravity's
+  installer hardcodes the V=u NVRAM (confirmed in its wifi.py) -> wrong
+  NVRAM on this mini under Gravity. tools/j773g-wifi-fw.sh copies the
+  live macOS selection into private/firmware/brcm (done, git-ignored);
+  WITH_FIRMWARE=1 packs it into the initramfs. brcmfmac/cfg80211 now =y.
+- Speaker: reviewed Gravity's in-kernel limiter (two-node thermal model,
+  constants from the J773g AID36/AUSP_0329 preset, -10 dB ceiling, electrical
+  values unmeasured) -> docs/j773g-speaker-safety.md. Audio stays off.
+- docs/j773g-gravity-issue-drafts.md (unposted): V=a NVRAM, missing
+  reboot/RTC nodes. Upstream issue draft refreshed for the Gravity base.
+- Both kernels and the firmware initramfs smoke-boot in QEMU.
+Result / last log line: no boot attempted; nothing written to the mini's
+  disk layout, ESP or boot policy (private/firmware is inside the repo).
+Next step: hardware (Andrei, when back at the mini): home-day checklist
+  route A, then stock -> g0 .. g8. Offline leftovers: confirm the mini's
+  audio ID is AID36 and re-decode its speaker preset; Bluetooth calibration
+  (BTBF); Phase 3 (Omarchy userland on the Gravity kernel) needs a plan -
+  Fable 5.1 / high per START_HERE.
