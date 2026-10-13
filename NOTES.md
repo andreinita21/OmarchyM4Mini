@@ -134,3 +134,38 @@ Next step: Andrei switches to **Opus 5.5 / medium** and runs the rest of his
       keeping licence/notice files.
   Commit and push after each step; keep NOTES.md current. Back to Fable 5.1
   / high only for Phase 1 step 7 (live ADT diff) or a stuck boot.
+
+## 2026-10-14 00:40 — setup 2 (offline DT validation + build environment)
+Model/effort: Opus 5.5 / medium (Andrei asleep; standing approval for
+  everything except disk/partition/boot-policy writes and the m1n1 stub)
+Changed:
+- brew install dtc (1.8.1). Docker Desktop (already installed, arm64,
+  10 CPUs, 5.8 GB) is the build environment: native arm64, no cross tools,
+  case-sensitive source tree in the Docker volume "j773g-src".
+- tools/j773g/Dockerfile (Debian trixie: clang/lld/llvm, dtc, busybox-static,
+  dt-schema venv), tools/j773g/inner-build.sh (runs in the container),
+  tools/j773g-build.sh (host wrapper: image|src|config|dtbs|check|kernel|
+  initramfs|m1n1|all|shell), tools/j773g/kernel.fragment, tools/j773g/init.
+  Artifacts land in build/j773g/ (git-ignored).
+- src: Asahi linux 77cb8f24c2 (shallow fetch by SHA) + patches 0001-0010,
+  0012, 0013, 0015 + m4-boot-hacks-7.1.9 + nvme split-NVMMU: all apply
+  cleanly, no fuzz.
+- dtbs: ladder rungs generated as wrapper .dts files (r0-boot, r1-smc,
+  r2-storage, r3-usb, r4-pcie, r5-atc23, rx-all) and built through kbuild:
+  ZERO dtc warnings on every rung. r5-atc23 and rx-all are byte-identical
+  (Thunderbolt/display layers emit nothing yet, as designed).
+- check (CHECK_DTBS=y, dt-schema): compared to t8132-j713.dtb from the same
+  tree (74 unique findings, all "t8132 compatible not in binding" class).
+  r0-r3 add nothing new (the dockchannel-hid helper-cpu finding differs only
+  by phandle value). r4 adds the pcie2 DART compatible (same class). r5 adds
+  the same class for the atc2/atc3 dwc3/DART/atcphy/crossbar nodes, plus one
+  real deviation: dwc3_2 (front hub, dr_mode host) has no usb-role-switch,
+  which the binding requires. Deliberate (host-only hub port); revisit if
+  the driver complains.
+- kernel config: arm64 defconfig + fragment; fixed symbol names
+  (NVMEM_APPLE_SPMI, TYPEC_SN201202X, MUX_APPLE_DPXBAR); every fragment
+  option now sticks.
+Result / last log line: no boot attempted; nothing written outside the
+  repo, Homebrew and Docker.
+Next step: finish kernel Image.gz build, initramfs, m1n1 build; then
+  items (4) host scripts, (5) research, (6) home-day checklist, (7) README.

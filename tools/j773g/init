@@ -1,0 +1,23 @@
+#!/bin/busybox sh
+# SPDX-License-Identifier: MIT
+# J773g bring-up initramfs: print the rung verdict on the HDMI console
+# (readable without a keyboard), then hand the console to a shell.
+/bin/busybox --install -s /bin
+export PATH=/bin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mount -t tmpfs tmpfs /tmp
+echo
+echo "=== J773g initramfs: $(uname -r) ==="
+cat /proc/cmdline
+echo "=== probe results ==="
+dmesg | grep -i -E 'smc|nvme|sart|ans|dwc3|atcphy|tps6598|typec|dart|pcie|tg3|brcmfmac|xhci|hid|input|simpledrm|error|fail|timeout' | tail -40
+echo "=== block devices ==="
+cat /proc/partitions
+echo "=== network ==="
+ip -o link 2>/dev/null
+echo "=== usb ==="
+ls /sys/bus/usb/devices 2>/dev/null | tr '\n' ' '; echo
+echo "=== done; shell on console (exit = panic = reboot) ==="
+exec setsid cttyhack sh
