@@ -55,12 +55,17 @@
 /*
  * Boot layer. The mini has no internal panel. iBoot drives HDMI through
  * dispext0 + the DP-to-HDMI converter behind dptx-phy; keep exactly those
- * domains on while simpledrm owns the framebuffer. Same as Asahi's board file.
+ * domains on while simpledrm owns the framebuffer.
+ * Uses ps_dispext0_fe, not Asahi's ps_dispext0_cpu: the firmware-owned
+ * display CPU domain is disabled, which defers simpledrm (GravityLinux/linux
+ * 1c374608ab, hardware-tested on an M4 mini, 2026-09-18). With no native
+ * display driver in this kernel a deferred simpledrm would mean a black
+ * screen on r0. ps_dispext0_cpu is a child of ps_dispext0_fe.
  * UNVERIFIED on this unit: ioreg shows dispext0 "external", dptx-phy
  * port-number 1 and port-hdmi-1; dispext1 is present but has no sink.
  */
 &framebuffer0 {
-	power-domains = <&ps_dispext0_cpu>, <&ps_dptx_phy>;
+	power-domains = <&ps_dispext0_fe>, <&ps_dptx_phy>;
 };
 
 /*

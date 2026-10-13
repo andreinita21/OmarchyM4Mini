@@ -169,3 +169,40 @@ Result / last log line: no boot attempted; nothing written outside the
   repo, Homebrew and Docker.
 Next step: finish kernel Image.gz build, initramfs, m1n1 build; then
   items (4) host scripts, (5) research, (6) home-day checklist, (7) README.
+
+## 2026-10-14 00:30 — setup 3 (kernel/initramfs/m1n1 built; research; Gravity prior art)
+Model/effort: Opus 5.5 / medium
+Changed:
+- Kernel: build/j773g/Image.gz (17 MB, 7.1.9-ge0a31617df5c, arm64 defconfig
+  + fragment, ~6 min in Docker). initramfs (busybox 1.37 static, init prints
+  probe lines / partitions / links then a shell). m1n1 v2.0.0-27-g94395adc
+  (needs Rust now; added to the image) -> build/j773g/m1n1/{m1n1.bin,
+  m1n1.macho, proxyclient/}.
+- Smoke test: kernel + initramfs boot to the busybox shell under QEMU
+  (-M virt -cpu max, inside the build container). Proves init, busybox and
+  16K-page kernel are sane; says nothing about Apple hardware.
+- tools/j773g-boot.sh (host: rung name -> upstream boot.sh with the kit,
+  default panic=0 so a panic stays on HDMI) and tools/j773g-adt-dump.sh
+  (host: live ADT + PMGR dumps into private/adt-live-<ts>/).
+- README.md rewritten for the fork; upstream front page kept as
+  docs/upstream-README.md.
+- Research (web): see docs/j773g-research.md. Headline: **GravityLinux has
+  a J773g-only installer and a gravity-m4 kernel branch whose
+  t8132-j773g.dts is hardware-tested on an M4 mini** (Fedora boots, native
+  HDMI via DCP, NVMe, USB incl. front hub, Ethernet, speaker).
+- DT changes adopted from Gravity, each cross-checked against our ioreg:
+  framebuffer power domain ps_dispext0_cpu -> ps_dispext0_fe (cpu domain is
+  firmware-owned/disabled and defers simpledrm = black screen risk on r0);
+  port00 pwren-gpios = smc_gpio 19 (INHERITED from Gravity jxxx); Ethernet
+  on bus 2 / RID 0x200 (was 3 / 0x300); front hub GPIO hogs 101 (flash OE)
+  and 198 (reset), confirmed in our ioreg usb3hub-fw node; port labels
+  Back-middle (atc0, DFU port) / Back-left (atc1) / Back-right (atc3).
+  Our hpm select IRQs (13/39/65) already equal Gravity's fixed values.
+- Wi-Fi is BCM4388 rev C2 (PCI 14e4:4434), not BCM4387 as macOS's
+  compatible string suggests. PLAN.md updated.
+- Rebuilt all rungs: zero dtc warnings; dt-schema adds only the
+  "pinctrl binding has no gpio-hog children" note on r5 (same as Gravity).
+Result / last log line: no boot attempted.
+Next step: build Gravity's gravity-m4 kernel + its t8132-j773g.dtb as a
+  known-good control for the home day; write docs/j773g-research.md and
+  docs/j773g-home-day-checklist.md; update PLAN.md.

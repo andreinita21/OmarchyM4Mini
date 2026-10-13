@@ -19,13 +19,22 @@
  *   lan-1gb: compatible pci14e4,1682 (Broadcom BCM57762 GbE, tg3 driver,
  *     same part as the M1/M2 mini), MAC supplied by iBoot via
  *     /chosen/mac-address-ethernet0 -> m1n1 fills local-mac-address.
- *   wlan: pci14e4,4434 (BCM4387), module-instance "sakhalin";
+ *   wlan: pci14e4,4434, module-instance "sakhalin". The macOS compatible
+ *     says bcm4387, but 0x4434 is the BCM4388 ID in Asahi's brcmfmac and
+ *     the Gravity installer collects C-4388__s-C2/sakhalin firmware for
+ *     J773g: treat it as BCM4388 rev C2 (upstream's brcmfmac 4388 patch is
+ *     therefore relevant).
  *   bluetooth-pcie: pci14e4,5f72, compatible bluetooth,n88.
- *   No pwren-gpios are known for either port (J473 uses SMC GPIOs; the
- *   mini's ADT bridges carry none in ioreg). Left out on purpose.
+ *   Port 0 power: pwren on SMC GPIO 19, from GravityLinux/linux
+ *     t8132-jxxx.dtsi (regulator "pwren-pcie0-port0", shared by all T8132
+ *     boards there). The mini's ioreg bridges show no pwren property, so
+ *     this is INHERITED. Ethernet (port 2) has no pwren on any Apple mini.
+ *   Ethernet bus number 2 and RID 0x200 match GravityLinux t8132-j773g.dts
+ *     (booted on an M4 mini); port 1 is not populated here.
  *
  * Firmware: Wi-Fi/BT need the Apple-extracted brcm firmware set for
- * "sakhalin" (asahi-installer firmware extraction). Ethernet needs none.
+ * "sakhalin" (asahi-fwextract currently skips C-4388__s-C2; the Gravity
+ * installer handles it). Ethernet needs none.
  */
 
 / {
@@ -60,7 +69,7 @@
 &pcie0 {
 	iommu-map = <0x100 &pcie0_dart 1 1>,
 		    <0x101 &pcie0_dart 2 1>,
-		    <0x300 &pcie2_dart 1 1>;
+		    <0x200 &pcie2_dart 1 1>;
 	iommu-map-mask = <0xffff>;
 	status = "okay";
 };
@@ -71,6 +80,7 @@
  */
 &port00 {
 	bus-range = <1 1>;
+	pwren-gpios = <&smc_gpio 19 GPIO_ACTIVE_HIGH>;
 
 	wifi0: wifi@0,0 {
 		compatible = "pci14e4,4434";
@@ -91,12 +101,12 @@
 };
 
 &port02 {
-	bus-range = <3 3>;
+	bus-range = <2 2>;
 	reset-gpios = <&pinctrl_ap 165 GPIO_ACTIVE_LOW>;
 	status = "okay";
 
 	ethernet0: ethernet@0,0 {
-		reg = <0x30000 0x0 0x0 0x0 0x0>;
+		reg = <0x20000 0x0 0x0 0x0 0x0>;
 		/* To be filled by the loader */
 		local-mac-address = [00 10 18 00 00 00];
 	};

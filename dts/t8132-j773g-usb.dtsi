@@ -13,14 +13,17 @@
  *            1-2 under it -> GL3590 hub (firmware on SPI3 NOR, usb3hub-fw)
  *            -> the two front USB-C ports
  *   usb-drd3 port-number 4  atc-phy3  hpm3 (SPMI USID 0x8, port 4)  rear TB
- *   Which physical rear port is which ATC instance is not known yet.
+ *   Physical ports (GravityLinux t8132-j773g.dts, hardware-tested):
+ *   atc0 = back-middle (also the DFU port, Apple support 120694),
+ *   atc1 = back-left, atc3 = back-right, atc2 = both front ports via hub.
  *
  * VERIFIED-J713 / UNVERIFIED-J773g (identical in ioreg):
  *   dwc3_0 0x4_02280000 IRQ 1279, darts 0x4_02f00000 + 0x4_02f80000 IRQ 1283
  *   with stream IDs <1,14>; dwc3_1 0x4_0a280000 IRQ 1341, darts IRQ 1345.
  *   SPMI controller nub-spmi-a0 0x3_88908000 IRQ 520; hpm0 IRQs 11/17/19,
- *   hpm1 IRQs 37/43/45, hpm3 IRQs 63/69/71. The "select" IRQs 13/39/65 are
- *   INHERITED (upstream inference, never completed on hardware).
+ *   hpm1 IRQs 37/43/45, hpm3 IRQs 63/69/71. The "select" IRQs 13/39/65
+ *   (irq + 2) match GravityLinux 4cb9998f58, which fixed hpm3's select line
+ *   to 65 and tested it on an M4 mini.
  */
 
 /* ---- Ports 0 and 1: SoC nodes already in t8132.dtsi after patch 0003 ---- */
@@ -66,7 +69,7 @@
 
 		typec0: connector {
 			compatible = "usb-c-connector";
-			label = "USB-C rear (ATC0)";
+			label = "USB-C Back-middle";
 			power-role = "dual";
 			data-role = "dual";
 
@@ -100,7 +103,7 @@
 
 		typec1: connector {
 			compatible = "usb-c-connector";
-			label = "USB-C rear (ATC1)";
+			label = "USB-C Back-left";
 			power-role = "dual";
 			data-role = "dual";
 
@@ -137,7 +140,7 @@
 #ifdef J773G_LAYER_USB_ATC23
 		typec3: connector {
 			compatible = "usb-c-connector";
-			label = "USB-C rear (ATC3)";
+			label = "USB-C Back-right";
 			power-role = "dual";
 			data-role = "dual";
 
@@ -343,6 +346,29 @@
 		reg = <0x4 0x1b04c000 0x0 0x4000>;
 		#mux-control-cells = <1>;
 		power-domains = <&ps_atc3_usb>;
+	};
+};
+
+/*
+ * GL3590 hub behind atc2: release it from reset and enable its SPI NOR so it
+ * boots its own firmware. Pins from this mini's ioreg (usb3hub-fw node:
+ * function-usb3hub_flash_oe = gpio 101, function-usb3hub_rst = gpio 198,
+ * both active-high), same values and polarity as GravityLinux
+ * t8132-j773g.dts. fwload_done (102) and flash_wp (193) are left alone.
+ */
+&pinctrl_ap {
+	usb3hub-flash-oe-hog {
+		gpio-hog;
+		gpios = <101 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "usb3hub-flash-oe";
+	};
+
+	usb3hub-reset-hog {
+		gpio-hog;
+		gpios = <198 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "usb3hub-reset";
 	};
 };
 #endif /* J773G_LAYER_USB_ATC23 */
