@@ -135,7 +135,7 @@ Next step: Andrei switches to **Opus 5.5 / medium** and runs the rest of his
   Commit and push after each step; keep NOTES.md current. Back to Fable 5.1
   / high only for Phase 1 step 7 (live ADT diff) or a stuck boot.
 
-## 2026-10-14 00:40 — setup 2 (offline DT validation + build environment)
+## 2026-10-13 23:45 — setup 2 (offline DT validation + build environment)
 Model/effort: Opus 5.5 / medium (Andrei asleep; standing approval for
   everything except disk/partition/boot-policy writes and the m1n1 stub)
 Changed:

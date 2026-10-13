@@ -139,7 +139,7 @@ cmd_m1n1() {
     git -C /src/m1n1 -c advice.detachedHead=false checkout -q "$M1N1_REF"
   git -C /src/m1n1 submodule update -q --init --recursive
   make -C /src/m1n1 -s clean
-  make -C /src/m1n1 -s -j"$JOBS" USE_CLANG=1 RELEASE=1
+  make -C /src/m1n1 -s -j"$JOBS" RELEASE=1
   mkdir -p /out/m1n1
   cp /src/m1n1/build/m1n1.bin /src/m1n1/build/m1n1.macho /out/m1n1/ 2>/dev/null || cp /src/m1n1/build/m1n1.bin /out/m1n1/
   git -C /src/m1n1 describe --always --tags > /out/m1n1/VERSION

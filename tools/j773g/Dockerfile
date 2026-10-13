@@ -18,4 +18,12 @@ RUN python3 -m venv /opt/dtschema \
     && /opt/dtschema/bin/pip install --no-cache-dir dtschema yamllint
 ENV PATH=/opt/dtschema/bin:$PATH
 
+# m1n1 >= 2.0 always links a Rust part (bare-metal softfloat target).
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal \
+         --default-toolchain stable --target aarch64-unknown-none-softfloat \
+    && cp -a /root/.cargo /opt/cargo && cp -a /root/.rustup /opt/rustup
+ENV CARGO_HOME=/opt/cargo RUSTUP_HOME=/opt/rustup PATH=/opt/cargo/bin:$PATH
+
 WORKDIR /work
