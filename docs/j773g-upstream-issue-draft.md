@@ -17,25 +17,24 @@ have started a port of this project to it in a fork:
 https://github.com/andreinita21/OmarchyM4Mini (branch `j773g`, based on
 `develop`).
 
-Plan, in order: RAM-only m1n1 chainload from a host, minimal J773g device
-tree (CPUs, AIC, PMGR, simplefb) to a busybox shell over HDMI with a USB
-keyboard, then NVMe, USB host, PCIe (Ethernet, Wi-Fi), GPU, display
-controller. Audio last, with mini-specific speaker data; I will not reuse the
-`audio/j713` profiles or limits.
+The kernel and board device tree come from GravityLinux's `gravity-m4`
+branch, whose `t8132-j773g.dts` already boots Fedora on this machine. On top
+of it the fork adds a RAM-only boot ladder (m1n1 chainload from a host, one
+subsystem group per boot: SMC, NVMe, USB, PCIe, cpufreq, DCP, GPU) and
+J773g pieces Gravity lacks. Audio stays off until a mini-specific speaker
+safety review is done; I will not reuse the `audio/j713` profiles or limits.
 
-I intend to keep J773g work in new files (`docs/j773g-*.md`, a
-`t8132-j773g.dts`) and only touch shared files for genuine T8132 fixes, which
-I would send as small PRs against `develop`. I understand the installer is
-J713-only and that nothing here qualifies another model.
+Your #24/#48 work carries over directly. The mini's Abbey PMU has exactly the
+Air's scratchpad layout (`info-leg_scrpad` 0xf800, `pm_setting` 0x2001,
+`clock_offset` 0x2100), and Gravity's T8132 tree has no `smc-reboot` /
+`smc-rtc` child at all. The fork's `dts/t8132-j773g-pmu.dtsi` adds them,
+with your four shutdown-state cells, as a rung to test on hardware.
 
-Two questions, if you have a minute:
+J773g work stays in new files (`docs/j773g-*.md`, `dts/t8132-j773g-*`).
+I understand the installer is J713-only and that nothing here qualifies
+another model.
 
-1. Is there anything in the current T8132 patches you already know to be
-   J713-specific beyond the obvious panel, keyboard/trackpad, battery and
-   speaker nodes?
-2. Did you observe the SMC shutdown issue (#24) as chip-level or board-level?
-
-Nothing observed on hardware yet; the fork currently only has the macOS-side
-recon. I will report back with results.
+Nothing observed on hardware yet; everything so far is macOS-side recon,
+offline builds and source comparison. I will report back with results.
 
 Thanks for the groundwork.
