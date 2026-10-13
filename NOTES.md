@@ -55,3 +55,82 @@ Next step: Andrei confirms the repo description (gh repo edit) and decides
   (1TR via power hold, DFU from another Mac). Steps 4–6 run on the host.
   Switch to Opus 5.5 / medium for steps 3–6; back to Fable 5.1 / high for
   step 7 (ADT diff and the real PLAN.md).
+
+## 2026-10-13 23:35 — setup 1 (preliminary J773g device tree + plan, no hardware)
+Model/effort: Fable 5.1 / high
+Changed:
+- Saved the ADT-derived IODeviceTree plane: private/iodevicetree-j773g.txt
+  (ioreg -p IODeviceTree -l -w0, 8878 lines). Git-ignored.
+- Found that Asahi's asahi branch (head 77cb8f24c2, 2026-05-30) already has
+  arch/arm64/boot/dts/apple/t8132-j773g.dts (commit fbf2e630a9, 2026-07-05:
+  compatible apple,j773g, model, framebuffer power domains ps_dispext0_cpu +
+  ps_dptx_phy) plus t8132.dtsi / t8132-jxxx.dtsi / t8132-pmgr.dtsi. Fetched
+  those eight files read-only into the session scratchpad for comparison
+  (not committed; they are GPL-2.0+ OR MIT kernel sources).
+- Decoded the mini's PMGR "devices" table (393 x 48-byte records, 16 ps-regs
+  entries) with a stand-alone parser using upstream's record layout. Result:
+  all 129 providers in t8132-pmgr.dtsi have real (non-virtual) records on
+  J773g, register offsets match once the ps-regs base table is applied, and
+  the only always-on differences are the three Linux-policy ones (aic,
+  disp_sys, disp_fe) also seen on J713. atc2/atc3 are REAL here -> upstream
+  patch 0011 must not be applied.
+- Wrote dts/t8132-j773g.dts and six layer includes (smc, storage, usb, pcie,
+  thunderbolt, display), gated on -DJ773G_LAYER_* so one source builds any
+  subset. Every ioreg-derived value is marked UNVERIFIED in the file headers.
+- Rewrote PLAN.md as the preliminary plan: J713-vs-J773g table, upstream
+  patch applicability, layer table, boot ladder r0..r5, remaining Phase 1
+  steps, open questions.
+- Memory updated: no Claude attribution in commits is a standing rule.
+Result / last log line: no boot attempted; nothing installed; nothing written
+  outside the repo. dtc is NOT installed on this mini (brew has it), so the
+  DT is syntax-unchecked - that is step 2 of Andrei's list (Opus).
+Diagnosis (findings that answer the open questions):
+- Ethernet: /arm-io/apcie/pci-bridge2 (apcie-port 2) -> lan-1gb, PCI ID
+  14e4:1682 (Broadcom BCM57762 GbE, tg3 driver; same as the M1/M2 mini), own
+  DART dart-apcie2 @0x4_92000000 IRQ 1250, mapper reg 1 -> SID 1,
+  CLKREQ gpio0 162 func 2, PERST gpio0 165. MAC in /chosen
+  mac-address-ethernet0 (m1n1 fills local-mac-address through the alias).
+- Display crossbar: display-crossbar0 (compatible display-crossbar,t8132)
+  lists dfp-endpoints atc0 atc1 atc2 atc3 lpdptx dptx; the per-port
+  atcN-dpxbar muxes are what upstream already models as atcphyN_xbar. HDMI
+  path = dispext0 @0x2_84000000 (external) + dcpext0 @0x2_86e00000 (role
+  DCPEXT0, IRQs 732/731/734/733) + dptx-phy @0x3_9a740000 (dptx-phy,t8122)
+  + dp2hdmi-gpio0: HPD aop-gpio 41, hdmi_pwr_en SMC gP0f (pin 15),
+  dp2hdmi_pwr_en SMC gP1a (pin 26), reset SMC gP10 (pin 16), force_dpfu
+  aop-gpio 36. SMC function provider phandle 0xf2 = /arm-io/smc/smc-pmu.
+- Speaker hardware: ONE amp, TI SN012776 (TAS2764 family) at i2c3 0x38,
+  IRQ gpio0 pin 14; jack codec Cirrus CS42L84 at i2c1 0x4b, IRQ gpio0 98;
+  MCA (iop-audio-controller) with audio-speaker / audio-codec-output /
+  audio-codec-input / mca-loopback children; dp-audio0/1/2 for DP/HDMI.
+  Same topology as t8112-j473 (M2 mini). Safety limits must be derived for
+  this amp/enclosure; never from audio/j713.
+- USB: four ATC instances. atc2 (port-number 3) has no PD controller and
+  carries usb2/usb3 hub ports -> GL3590 hub (firmware "usb3hub-fw-gl3590,spi"
+  in a NOR flash on spi3 @0x3_ad10c000 IRQ 1057) -> the two front USB-C
+  ports. hpm0/hpm1/hpm3 = USIDs 0xC/0xA/0x8, IRQs 11-17-19 / 37-43-45 /
+  63-69-71, port-numbers 1/2/4 -> the three rear Thunderbolt ports.
+- Wi-Fi: BCM4387 (14e4:4434) module-instance "sakhalin"; BT 14e4:5f72
+  (bluetooth,n88). Both on apcie port 0, SIDs 1/2, pins 160/163 (= J713).
+- SMC, ANS/NVMe, SART, USB atc0/atc1, DARTs, AIC, UART, wdt, gpio: all
+  addresses and IRQs visible in ioreg equal the J713 audit values.
+- No MTP / dockchannel-mtp on the mini; i2c0 exists (no children), i2c4
+  does not exist.
+Next step: Andrei switches to **Opus 5.5 / medium** and runs the rest of his
+  2026-10-13 list, in this order:
+  (2) brew install dtc (needs his OK - it installs software); cpp+dtc build
+      of each layer combination; dtbs_check against the kernel bindings.
+  (3) propose the native arm64 build environment (Homebrew LLVM/clang+lld,
+      dtc, python3 pyserial+construct, cpio/gzip, busybox source, m1n1
+      source), wait for approval, then build kernel + initramfs + m1n1 under
+      ~/OmarchyM4Mini/build/ (already git-ignored) or outside the repo.
+  (4) tools/j773g-boot.sh (adapt upstream tools/boot.sh: layers -> DTB,
+      M1N1DEVICE, logging) and tools/j773g-adt-dump.sh (proxyclient
+      dump of the live ADT into private/).
+  (5) research: J773g DFU/proxy port, GL3590 hub firmware behaviour, PCIe
+      pwren GPIOs, BCM4387 firmware set for sakhalin, SMC shutdown on mini.
+  (6) docs/j773g-home-day-checklist.md with exact commands.
+  (7) README.md: replace the J713 installer front page with what this fork
+      is (mini port, status, layers, no installer, upstream credit) while
+      keeping licence/notice files.
+  Commit and push after each step; keep NOTES.md current. Back to Fable 5.1
+  / high only for Phase 1 step 7 (live ADT diff) or a stuck boot.
