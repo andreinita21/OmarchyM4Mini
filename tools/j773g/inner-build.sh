@@ -6,7 +6,7 @@
 #   /out   build/j773g/ in the repository (git-ignored)
 #
 # BASE=gravity (default): GravityLinux/linux gravity-m4, pinned below. Its
-#   t8132-j773g.dts has booted Fedora on an M4 mini. The ladder rungs g0..g6
+#   t8132-j773g.dts has booted Fedora on an M4 mini. The ladder rungs g0..g7
 #   are that board file plus dts/t8132-j773g-ladder.dtsi. M4_HACKS=1 adds
 #   upstream's m4-boot-hacks patch (Gravity boots without it).
 #   Output: /out/Image.gz, /out/dtb/, /out/kernel.config
@@ -35,6 +35,7 @@ case $BASE in
       [g4-pcie]="SMC STORAGE USB PCIE"
       [g5-cpufreq]="SMC STORAGE USB PCIE CPUFREQ"
       [g6-display]="SMC STORAGE USB PCIE CPUFREQ DISPLAY"
+      [g7-poweroff]="SMC STORAGE USB PCIE CPUFREQ DISPLAY PMU"
     )
     ;;
   asahi)

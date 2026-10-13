@@ -242,3 +242,8 @@
 	status = "disabled";
 };
 #endif
+
+/* ---- PMU NVMEM + SMC reboot/poweroff + RTC (not in Gravity's tree) ---- */
+#if defined(J773G_LADDER_PMU) && defined(J773G_LADDER_SMC)
+#include "t8132-j773g-pmu.dtsi"
+#endif

@@ -6,7 +6,7 @@
 #   build/j773g/Image.gz, build/j773g/initramfs.cpio.gz,
 #   build/j773g/dtb/t8132-j773g-<rung>.dtb, build/j773g/m1n1/proxyclient/
 # Rungs (Gravity base): stock g0-boot g1-smc g2-storage g3-usb g4-pcie
-#   g5-cpufreq g6-display. "stock" = Gravity's unmodified J773g tree.
+#   g5-cpufreq g6-display g7-poweroff. "stock" = Gravity's unmodified J773g tree.
 # Legacy Asahi rungs r0-boot..r5-atc23 use build/j773g/asahi/ automatically.
 # Env: M1N1DEVICE (required, the mini's proxy tty), PYTHON, BOOT_ARGS.
 # Default args keep panics on the HDMI screen (panic=0) because the mini has

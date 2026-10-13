@@ -12,7 +12,7 @@
 #   m1n1       m1n1.bin + proxyclient           -> build/j773g/m1n1/
 #              (M1N1_FLAVOUR=gravity             -> build/j773g/m1n1-gravity/)
 # Environment:
-#   BASE=gravity (default) GravityLinux gravity-m4 @ GRAVITY_SHA, rungs g0..g6
+#   BASE=gravity (default) GravityLinux gravity-m4 @ GRAVITY_SHA, rungs g0..g7
 #                          + "stock" (Gravity's unmodified J773g DTB)
 #   BASE=asahi             legacy Asahi 77cb8f24c2 tree, rungs r0..r5,
 #                          artifacts under build/j773g/asahi/
