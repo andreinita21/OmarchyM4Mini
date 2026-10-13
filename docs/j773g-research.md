@@ -74,8 +74,11 @@ Consequences for this fork:
 - Upstream asahi-fwextract skips `C-4388__s-C2` ("broken firmware dir in
   14.6.1 IPSW"), so Asahi's extraction drops this mini's Wi-Fi firmware;
   Gravity's `gravity-fwextract` handles it. Mainline brcmfmac lacks 4388;
-  Asahi adds it, and upstream's `brcmfmac-bcm4388-rev6-c2-v116.patch` is
-  likely relevant here after all.
+  Asahi adds it. Gravity's `gravity-m4` brcmfmac already has the BSS-info
+  v116 change and maps rev >= 4 (C2 included) to the `brcmfmac4388c0-pcie`
+  firmware names that its fwextract writes, so upstream's
+  `brcmfmac-bcm4388-rev6-c2-v116.patch` is not needed on the Gravity base
+  (checked 2026-10-14).
 - Bluetooth needs per-unit beamforming calibration (`BTBF` from
   `BWCl-sakhalin-4388-C2-*` records); Gravity passes it via U-Boot.
 - Out of scope for the first weekend.

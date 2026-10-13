@@ -62,7 +62,7 @@ Ethernet, cpufreq, speaker). Consequences:
 | patches/0001–0016 (T8132 DT slices, J713 fixes) | not used; Gravity's `t8132.dtsi` already carries these subsystems |
 | patches-kernel/m4-boot-hacks-7.1.9.patch | applies cleanly but **not needed** (Gravity boots without it); available as `M4_HACKS=1` fallback |
 | patches-kernel/nvme-apple-t8132-split-nvmmu.patch | conflicts; Gravity has its own T8132 NVMe driver |
-| patches-kernel/brcmfmac-bcm4388-rev6-c2-v116.patch | conflicts; check whether Gravity's brcmfmac already handles 4388 C2 |
+| patches-kernel/brcmfmac-bcm4388-rev6-c2-v116.patch | not needed: Gravity's brcmfmac has BSS v116 and loads C2 firmware under the 4388c0 names |
 | patches-kernel/j713-smc-reboot-optional-nvmem.patch | applies; relevant to the shutdown question (section 7) |
 | patches-kernel/j713-input/* | irrelevant (no MTP on the mini) |
 | patches/j713-*.dtso | J713 only |
@@ -113,6 +113,7 @@ console if any, partitions, links, then a shell.
 | g4-pcie | +PCIE | `eth0` (tg3); Wi-Fi needs firmware | `ip link` |
 | g5-cpufreq | +CPUFREQ | no hang under load; `/sys/devices/system/cpu/cpufreq` | keyboard |
 | g6-display | +DISPLAY | appledrm takes over HDMI from simpledrm | screen |
+| g7-poweroff | +PMU (`dts/t8132-j773g-pmu.dtsi`, not in Gravity) | `poweroff -f` leaves the mini off; RTC readable | LED off |
 | later | GPU (Rust kernel), Wi-Fi/BT firmware, audio with reviewed safety data | — | — |
 
 If a rung is black: boot `stock`; then warm-reboot into `g0-boot` and read
@@ -146,11 +147,13 @@ Decided 2026-10-14: kernel base = Gravity `gravity-m4`; stub route =
 Gravity installer (home-day checklist, route A).
 
 Still open:
-- SMC shutdown on the mini: Gravity's tree has no `macsmc-reboot` NVMEM
-  cells either, which is what made the Air restart instead of power off
-  (upstream issue #24, PR #48). Candidate J773g fix, needs a hardware test.
+- SMC shutdown on the mini: Gravity's tree has no `apple,smc-reboot` /
+  `apple,smc-rtc` child at all. Candidate fix (PMU NVMEM + reboot cells,
+  values from this mini's ioreg) in `dts/t8132-j773g-pmu.dtsi`, rung
+  g7-poweroff, see `docs/j773g-poweroff.md`. Needs a hardware test.
 - Whether the m1n1 hypervisor now works on T8132 (fixes landing upstream).
 - GPU: needs a Rust-enabled kernel build (DRM_ASAHI_M4) in the container.
 - Wi-Fi/BT firmware for BCM4388 C2 "sakhalin" (Gravity's fwextract).
-- Speaker safety profile for the SN012776 + mini enclosure (review Gravity's
-  `apple,j773g-speaker` driver before any audio rung).
+- Speaker safety: Gravity's in-kernel limiter reviewed in
+  `docs/j773g-speaker-safety.md`; audio stays off until the AID36 preset
+  decode is independently checked.
