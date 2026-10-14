@@ -239,6 +239,20 @@ hang on T8132 that Opus cannot read in 2–3 attempts (START_HERE §4).
   and Omarchy's wrappers already live with it.
 - **Gravity firmware bug.** The installer's V-u NVRAM lands in
   `vendorfw/firmware.cpio`; Ethernet first, Wi-Fi fix in P3.7.
+- **m1n1 console hang (adopted from upstream 2026-10-14).** Upstream issue
+  #82: one M4 Air stopped on the m1n1 logo with a blank screen because m1n1's
+  dockchannel UART writer waits for TX space without limit and the console
+  writes dockchannel before the framebuffer. Firmware version does not
+  predict it. kb2uka's `dockchannel-tx-bound.patch` (test tag
+  `test-issue82-dockchannel-1`, MIT) bounds every wait; it applies unchanged
+  to Gravity's m1n1 and is now in `m1n1-gravity` (pkgrel 2) and in the
+  ladder's `build/j773g/m1n1-gravity/m1n1.bin`. If the mini ever sits on the
+  logo with nothing on HDMI, this is the first suspect and already covered.
+- **GPU power limit per chip (upstream #57).** m1n1 derives the GPU power
+  ceiling from the top voltage state, so it differs between units of the same
+  model (Airs: 24304 vs 24800 mW). Any gate or check for `g8-gpu` must accept
+  this unit's own value and log the measured numbers rather than compare
+  against a constant.
 
 ## 8. Decisions for Andrei
 

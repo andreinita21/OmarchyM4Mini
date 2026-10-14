@@ -395,3 +395,35 @@ Next step: hardware (Andrei): route A, ladder stock -> g0..g8, then rung u0
   (image on a USB SSD, kernel from RAM). Offline leftovers: J773G_CMDLINE
   from the ladder; posting the upstream drafts (Andrei); AID36 audio check;
   mesa-gravity-m4 after g8. Switch back to Opus 5.5 / medium.
+
+## 2026-10-14 17:40 — setup 10 (rung u0 tooling, upstream merge, m1n1 console fix)
+Model/effort: Fable 5.1 / high (continuing at Andrei's request; switch back to Opus)
+Changed:
+- Rung u0 (plan P3.4) tooling: tools/j773g/compose-disk.sh builds one sparse
+  GPT disk (EFI 500 MB id 4F4D-5801, Boot 2 GiB, Root) from the image plus
+  the RAM-boot kit build/j773g/disk/u0/{Image.gz,initramfs.img,cmdline};
+  tools/j773g-disk.sh compose|write <disk>|info (write refuses anything but
+  a whole external USB disk and asks for the identifier; disk0/disk3 refused
+  in a read-only check); tools/j773g-boot.sh u0 (DTB = U0_RUNG, default
+  g6-display; BOOT_ARGS + Limine's root= line + J773G_CMDLINE);
+  tools/boot.sh BOOT_INITRD. Smoke test now boots the same disk.img with
+  -snapshot: reached `omarchy login:` again, only speakersafetyd failed.
+  The image's initramfs carries uas/usb-storage/xhci/dwc3/phy-apple-atc
+  (checked with lsinitcpio), so a USB root is covered.
+- Merged upstream/develop (M4 Air update channel, connect script, speaker/
+  GStreamer packages; all J713-only). README stays ours; upstream's is
+  mirrored in docs/upstream-README.md.
+- Adopted from upstream test tag test-issue82-dockchannel-1: kb2uka's
+  dockchannel-tx-bound.patch (m1n1 hung on the logo when nothing drained the
+  dockchannel TX FIFO). Applies unchanged to Gravity's m1n1 7243b815; now in
+  m1n1-gravity pkgrel 2 and the ladder's build/j773g/m1n1-gravity/m1n1.bin
+  (sha 41378d15…). Noted upstream #57's lesson (GPU power limit differs per
+  chip) in plan §7 for g8. Image rebuilt so stage 2 carries the fix.
+- Freed ~12 GB of stale smoke copies; the mini has ~48 GiB free.
+Result / last log line: QEMU smoke on the composed disk: "omarchy login:".
+  No boot attempted on the mini; nothing written to its disk layout, ESP or
+  boot policy.
+Next step: hardware (Andrei): route A, ladder stock -> g0..g8, then
+  tools/j773g-disk.sh write <USB SSD> + tools/j773g-boot.sh u0. Offline:
+  nothing urgent (J773G_CMDLINE after the ladder; upstream drafts are
+  Andrei's to post).

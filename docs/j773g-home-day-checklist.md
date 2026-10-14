@@ -93,6 +93,12 @@ sudo cp m1n1.bin /boot/efi/m1n1/boot.bin    # build/j773g/m1n1-gravity/m1n1.bin 
 ```
 
 Undo (back to booting Gravity): `sudo cp /boot/efi/m1n1/boot.bin.gravity /boot/efi/m1n1/boot.bin`.
+
+`build/j773g/m1n1-gravity/m1n1.bin` (and the `m1n1-gravity` package) carry
+kb2uka's bounded dockchannel console (upstream issue #82). If the mini ever
+stops on the m1n1 logo with a blank HDMI screen, that is the known hang on
+*unpatched* m1n1 (Gravity's shipped stage 1 and 2 are unpatched); see
+[j773g-phase3-plan.md](j773g-phase3-plan.md) §7.
 If the ESP is unreachable from Linux, mount it from macOS with
 `diskutil list` → `sudo diskutil mount diskXsY` (the "EFI - GRAVI…" partition).
 

@@ -8,8 +8,8 @@
 
 pkgname=m1n1-gravity
 pkgver=1.6.1.gravity20261013
-pkgrel=1
-pkgdesc='GravityLinux m1n1 (T8132 / M4 Mac mini support)'
+pkgrel=2
+pkgdesc='GravityLinux m1n1 (T8132 / M4 Mac mini support) with a bounded dockchannel console'
 _commit=7243b815c4d78f39047172b866dc6518d5cab11d
 _artwork_commit=e613a87e526f8fec439c4129e69dd2821b38d258   # the fork's artwork submodule
 arch=('aarch64')
@@ -22,13 +22,20 @@ options=('!strip' '!debug')
 source=(
   "bootloader-${_commit}.tar.gz::https://github.com/GravityLinux/bootloader/archive/${_commit}.tar.gz"
   "artwork-gravity-${_artwork_commit}.tar.gz::https://github.com/GravityLinux/artwork/archive/${_artwork_commit}.tar.gz"
+  # Kb2uka/Omarchy-M4-Native test-issue82-dockchannel-1 (MIT, KB2UKA): m1n1's
+  # dockchannel UART writer spun forever when nothing drained the TX FIFO (an
+  # M4 Air stuck on the m1n1 logo). Every wait is bounded; the HDMI framebuffer
+  # and the USB proxy are untouched. Same console path on the mini.
+  dockchannel-tx-bound.patch
 )
 sha256sums=('e945205632f2676d35071b4173dde08cd01e294f4c6618af65a064a38db51caa'
-            '58bf5f963f8506819732da12bb012f27e06bffae2a75f1eb3173378d05534fc8')
+            '58bf5f963f8506819732da12bb012f27e06bffae2a75f1eb3173378d05534fc8'
+            '8a9cf9f7db71212d23718cea09ccfe0abdd50bbdbd3b4180eaf575d388c30311')
 
 prepare() {
   rm -rf "bootloader-${_commit}/artwork"
   cp -r "artwork-${_artwork_commit}" "bootloader-${_commit}/artwork"
+  patch -d "bootloader-${_commit}" -p1 < dockchannel-tx-bound.patch
   rustup target add aarch64-unknown-none-softfloat
 }
 

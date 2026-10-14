@@ -230,6 +230,13 @@ cmd_m1n1() {
   git -C "$M" -c advice.detachedHead=false checkout -q "origin/$M1N1_REF" 2>/dev/null ||
     git -C "$M" -c advice.detachedHead=false checkout -q "$M1N1_REF"
   git -C "$M" submodule update -q --init --recursive
+  git -C "$M" checkout -q -- .
+  if [[ $M1N1_FLAVOUR == gravity ]]; then
+    # Same patch as the m1n1-gravity package: bounded dockchannel TX waits
+    # (upstream test-issue82-dockchannel-1), so a stuck console cannot hang
+    # stage 2 before the HDMI framebuffer shows anything.
+    patch -d "$M" -p1 < /repo/packaging/j773g/m1n1-gravity/dockchannel-tx-bound.patch
+  fi
   make -C "$M" -s clean
   make -C "$M" -s -j"$JOBS" RELEASE=1
   mkdir -p "$O"
