@@ -35,7 +35,7 @@ docker run --rm --platform linux/arm64 --privileged -v "$IMG:/img:ro" -v "$WORK:
   # tree, then boot.img and root.img copied in at their partition offsets.
   root_mib=\$(( ( \$(stat -c %s /img/root.img) + 1048575 ) / 1048576 ))
   rm -f /w/disk.img; truncate -s \$(( (1 + 500 + 2048 + root_mib + 2) * 1048576 )) /w/disk.img
-  printf 'label: gpt\nunit: MiB\nstart=1, size=500, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, name=EFI\nstart=501, size=2048, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name=Boot\nstart=2549, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name=Root\n' | sfdisk -q /w/disk.img
+  printf 'label: gpt\nunit: sectors\nstart=2048, size=1024000, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, name=EFI\nstart=1026048, size=4194304, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name=Boot\nstart=5220352, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name=Root\n' | sfdisk -q /w/disk.img
   rm -f /w/esp.img; truncate -s 524288000 /w/esp.img
   mkfs.vfat -F 32 -n OMARCHYESP -i 4f4d5801 /w/esp.img >/dev/null
   mcopy -i /w/esp.img -s -p /img/esp/* ::/
