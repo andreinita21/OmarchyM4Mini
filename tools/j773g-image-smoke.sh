@@ -26,7 +26,10 @@ docker run --rm --platform linux/arm64 --privileged -v "$IMG:/img:ro" -v "$WORK:
   # Kernel and fallback initramfs (every module; the autodetected one may lack
   # virtio) out of the ext4 boot image.
   debugfs -R 'dump /vmlinuz-$KERNEL /w/vmlinuz' /img/boot.img
-  debugfs -R 'dump /initramfs-$KERNEL-fallback.img /w/initramfs.img' /img/boot.img
+  # The Mac preset builds no fallback image; the normal one carries every block
+  # driver (the chroot build autodetected nothing).
+  debugfs -R 'dump /initramfs-$KERNEL-fallback.img /w/initramfs.img' /img/boot.img 2>/dev/null
+  [[ -s /w/initramfs.img ]] || debugfs -R 'dump /initramfs-$KERNEL.img /w/initramfs.img' /img/boot.img
   cp -f /img/root.img /w/root.img; cp -f /img/boot.img /w/boot.img
   mkdir -p /m && mount -o loop,ro,subvol=@ /w/root.img /m
   uuid=\$(sed -n 's/^UUID=\([^ ]*\) *\/ .*/\1/p' /m/etc/fstab); umount /m

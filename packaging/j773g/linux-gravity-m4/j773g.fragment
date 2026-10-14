@@ -27,3 +27,10 @@ CONFIG_DRM_APPLE_AUDIO=y
 CONFIG_BACKLIGHT_CLASS_DEVICE=y
 # DRM_APPLE "depends on TYPEC || !TYPEC": a modular Type-C core caps it at =m.
 CONFIG_TYPEC=y
+
+# QEMU smoke tests of the image (tools/j773g-image-smoke.sh): the Asahi config
+# has no PL011 serial, so a virt machine prints nothing. Harmless on the Mac.
+CONFIG_SERIAL_AMBA_PL011=y
+CONFIG_SERIAL_AMBA_PL011_CONSOLE=y
+CONFIG_VIRTIO_PCI=y
+CONFIG_VIRTIO_MMIO=y

@@ -306,7 +306,7 @@ install_apple_set() {
   installed=$(pacman --dbpath "$target/var/lib/pacman" -Q)
   grep -q "^$KERNEL " <<<"$installed" || fail "$KERNEL is not installed"
   ! grep -Eq '^linux-(asahi|aurora|aarch64) ' <<<"$installed" || fail "another kernel is installed beside $KERNEL"
-  [[ -s $target/usr/lib/modules/*-ARCH/dtbs/t8132-j773g.dtb ]] || fail "the kernel package ships no t8132-j773g.dtb"
+  compgen -G "$target/usr/lib/modules/*-ARCH/dtbs/t8132-j773g.dtb" >/dev/null || fail "the kernel package ships no t8132-j773g.dtb"
 }
 
 # --------------------------------------------------------------- configure ---
