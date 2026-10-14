@@ -340,3 +340,32 @@ Next step: switch back to Opus 5.5 / medium. Offline (can start now):
   P3.3 upstream drafts (docs/j773g-omarchy-issue-drafts.md). Hardware
   (Andrei): home-day checklist route A, ladder stock -> g0..g8, then u0.
   Decisions for Andrei: docs/j773g-phase3-plan.md section 8.
+
+## 2026-10-14 08:05 — setup 8 (Phase 3 packaging and image builder)
+Model/effort: Fable 5.1 / high (Andrei asked to keep going; P3.1–P3.2 are
+  Opus-grade work and the next session should run on Opus 5.5 / medium)
+Changed:
+- packaging/j773g/: PKGBUILDs linux-gravity-m4 (gravity-m4 7.1.13, asahi-alarm
+  linux-asahi config + j773g.fragment, provides linux-asahi, -ARCH
+  localversion), m1n1-gravity (bootloader 7243b815c4 + artwork, LOGO=bootlogo),
+  uboot-gravity (asahi-v2026.07-2 + asahi-alarm/Omarchy patches + Gravity's
+  nine T8132 patches; the spec's four late Asahi NVMe patches are already in
+  that base), omarchy-j773g (asahi,efi-system-partition from the Gravity
+  property via /etc/m1n1.conf + update-m1n1, DTBS=t8132-j773g only,
+  /usr/local/bin/omarchy-mac-kernel shim).
+- tools/j773g/Dockerfile.alarm + tools/j773g-pkg.sh: Arch Linux ARM build
+  container (rustup 1.93.1, bindgen 0.73.2 from ALARM), makepkg wrapper.
+  Built: m1n1-gravity (208 KB), uboot-gravity (254 KB); linux-gravity-m4 in
+  progress (long).
+- tools/j773g-image.sh + tools/j773g/image-build.sh: image builder mirroring
+  omarchy-mac-installer's build-mac-image (btrfs @/@home/@log/@pkg +
+  @factory, ext4 /boot, FAT ESP, Limine via lifecycle dispatch); vendored
+  finalize-root + node.pin (MIT). tools/j773g-image-smoke.sh: QEMU boot of
+  the image inside the container. Neither run yet.
+- docs/j773g-image.md, docs/j773g-omarchy-issue-drafts.md (unposted).
+Result / last log line: no boot attempted; nothing written to the mini's
+  disk layout, ESP or boot policy. Docker Desktop privileged containers have
+  loop devices and btrfs (checked), so the image builder can run on the mini.
+Next step: finish linux-gravity-m4 and omarchy-j773g builds; run
+  tools/j773g-image.sh (expect iterations: omarchy-apply-system in a chroot,
+  Limine activation); smoke-boot with tools/j773g-image-smoke.sh; then NOTES.
