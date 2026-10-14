@@ -33,6 +33,7 @@ Basecamp, Asahi Linux, Gravity Linux, Apple, or Kb2uka.
 | Research: ports, front hub, PCIe power, Wi-Fi chip, stub install | done — [docs/j773g-research.md](docs/j773g-research.md) |
 | m1n1 stub on the mini, live ADT dump through m1n1 | not started (needs a second machine and the owner's go-ahead) |
 | First RAM-only boot to a busybox shell on HDMI | not started |
+| Phase 3: Omarchy on the mini, on Omarchy's official Apple Silicon platform with Gravity-based kernel/m1n1/U-Boot packages | planned — [docs/j773g-phase3-plan.md](docs/j773g-phase3-plan.md) |
 
 The running log is [NOTES.md](NOTES.md); the next hardware session follows
 [docs/j773g-home-day-checklist.md](docs/j773g-home-day-checklist.md).
@@ -42,7 +43,7 @@ The running log is [NOTES.md](NOTES.md); the next hardware session follows
 | Path | What |
 | --- | --- |
 | [START_HERE.md](START_HERE.md) | Project brief and safety rules |
-| [PLAN.md](PLAN.md) | J713-vs-J773g comparison, patch applicability, boot ladder |
+| [PLAN.md](PLAN.md) | J713-vs-J773g comparison, patch applicability, boot ladder, Phase 3 summary |
 | [NOTES.md](NOTES.md) | One entry per setup step or boot attempt |
 | [dts/t8132-j773g-ladder.dtsi](dts/t8132-j773g-ladder.dtsi) | Boot-ladder gates applied on top of GravityLinux's `t8132-j773g.dts`; audio always off |
 | [dts/asahi/](dts/asahi/) | Earlier layered tree on Asahi `77cb8f24c2` + upstream T8132 patches (`BASE=asahi`) |

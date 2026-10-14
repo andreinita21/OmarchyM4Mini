@@ -3,7 +3,8 @@
 
 Status: **preliminary plan, 2026-10-13** (Fable 5.1 / high); facts updated
 2026-10-14 (Opus 5.5) from web research and GravityLinux's hardware-tested
-J773g tree — see `docs/j773g-research.md`. Based on the
+J773g tree — see `docs/j773g-research.md`; Phase 3 planned 2026-10-14
+(Fable 5.1 / high, section 8). Based on the
 macOS IORegistry dump of this mini (`private/iodevicetree-j773g.txt`, the
 ADT as macOS exposes it), upstream's J713 patches and audit, and Asahi's own
 `t8132-j773g.dts`. Every mini-specific value is **UNVERIFIED** until the live
@@ -160,3 +161,21 @@ Still open:
 - Speaker safety: Gravity's in-kernel limiter reviewed in
   `docs/j773g-speaker-safety.md`; audio stays off until the AID36 preset
   decode is independently checked.
+
+## 8. Phase 3 — Omarchy on the mini (planned 2026-10-14, Fable 5.1 / high)
+
+Full plan: [`docs/j773g-phase3-plan.md`](docs/j773g-phase3-plan.md). The
+short version: Omarchy upstream gained an official Apple Silicon platform
+(`aarch64-apple`, merged 2026-10-10: `omarchy-mac` + `omarchy-mac-boot`
+packages, m1n1 → U-Boot → Limine → UKI boot chain, `edge` channel only,
+M4 refused by its installer catalog). Phase 3 reuses that stack and replaces
+only the hardware pieces with packages built from the Gravity sources this
+repo pins: `linux-gravity-m4` (provides `linux-asahi`), `m1n1-gravity`,
+`uboot-gravity`, plus a tiny `omarchy-j773g` glue package (ESP chosen
+property, DTB selection, kernel-name shim). An offline image builder
+mirrors Omarchy's official producer. Order: packages → image + QEMU smoke →
+rung `u0` (Omarchy root on a USB SSD, kernel from RAM, no disk writes) →
+replace Gravity's root/ESP in place (approval per command) → first boot.
+GPU is llvmpipe until `g8-gpu` passes; audio stays off. kb2uka's
+`boot.bin`/root-identity route is the fallback only if U-Boot → Limine
+fails on T8132.

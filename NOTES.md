@@ -308,3 +308,35 @@ Next step: hardware (Andrei, when back at the mini): home-day checklist
   audio ID is AID36 and re-decode its speaker preset; Bluetooth calibration
   (BTBF); Phase 3 (Omarchy userland on the Gravity kernel) needs a plan -
   Fable 5.1 / high per START_HERE.
+
+## 2026-10-14 07:20 — setup 7 (Phase 3 plan)
+Model/effort: Fable 5.1 / high (plan only, per START_HERE §4)
+Changed:
+- docs/j773g-phase3-plan.md: Omarchy userland plan on the Gravity kernel.
+  Research result that changes the picture: upstream Omarchy merged an
+  official Apple Silicon platform on 2026-10-10 (basecamp/omarchy#14431):
+  platform `aarch64-apple`, packages omarchy-mac 0.1.4 + omarchy-mac-boot
+  20261010 on pkgs.omarchy.org edge/aarch64, boot chain m1n1 -> U-Boot ->
+  Limine -> UKI, kernel linux-aurora (Asahi fork, M1/M2), installer
+  omacom/omarchy-mac-installer (M4 refused in its catalog, no public
+  release yet). Arch Linux ARM has the whole desktop set for aarch64.
+- Decision (route O): reuse the official stack; replace only kernel, m1n1
+  and U-Boot with packages from the Gravity sources already pinned here
+  (linux-gravity-m4 provides linux-asahi, m1n1-gravity, uboot-gravity) +
+  a small omarchy-j773g glue package (asahi,efi-system-partition from the
+  gravity property via /etc/m1n1.conf, DTBS limited to t8132-j773g,
+  omarchy-mac-kernel name shim until an upstream provides-check lands).
+  Image: own unsigned builder mirroring omarchy-mac-installer's producer.
+  Install: rung u0 (Omarchy root on USB, kernel from RAM, no disk writes)
+  first, then replace Gravity's Root + ESP files in place with approval.
+  GPU llvmpipe until g8 passes (official M3 precedent); audio off.
+  kb2uka's boot.bin route is the fallback if U-Boot -> Limine fails on
+  T8132.
+- PLAN.md section 8 summarises it; README points to it.
+Result / last log line: no boot attempted; nothing written to the mini's
+  disk layout, ESP or boot policy.
+Next step: switch back to Opus 5.5 / medium. Offline (can start now):
+  P3.1 PKGBUILDs + ALARM build container, P3.2 image builder + QEMU smoke,
+  P3.3 upstream drafts (docs/j773g-omarchy-issue-drafts.md). Hardware
+  (Andrei): home-day checklist route A, ladder stock -> g0..g8, then u0.
+  Decisions for Andrei: docs/j773g-phase3-plan.md section 8.
