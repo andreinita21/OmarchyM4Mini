@@ -19,29 +19,41 @@
 > The applicable [licenses](../LICENSE.md) and
 > [third-party notices](../THIRD_PARTY_NOTICES.md) remain in effect.
 
-# 📣 Installed before October 13, 2026? Run one command.
+# 📣 Start here: new install, or updating the alpha
 
 > [!IMPORTANT]
-> ## If you installed v0.1.0-alpha.1 before [PR #53](https://github.com/Kb2uka/Omarchy-M4-Native/pull/53) (October 13, 2026), connect your Air to M4 updates once.
+> ## New to Omarchy on the M4 Air
 >
-> Until you do, your Air **cannot receive M4 fixes**. If you never ran update 1,
-> **Shut Down still restarts it**. Join Wi-Fi, open a terminal on the Air, paste
-> this whole block, press Enter and type your password:
+> [Download and install v0.1.0-alpha.1](#download-and-install), then do the
+> [connect step](#then-connect-to-m4-updates--everyone-once) once after your
+> first login. The published installer does not connect by itself yet.
+>
+> ## Already installed the alpha (including last night)
+>
+> **No new installer and no reinstall.** Join Wi-Fi, open a terminal on the Air,
+> paste this one line, press Enter and type your password when asked:
 >
 > ```bash
-> cd ~ && rm -rf m4-updates && mkdir m4-updates && cd m4-updates &&
-> base=https://github.com/Kb2uka/Omarchy-M4-Native/releases/download/packages &&
-> curl -fL -O "$base/omarchy-m4-setup.py" -O "$base/SETUP-SHA256SUMS" &&
-> sha256sum -c SETUP-SHA256SUMS &&
-> sudo python3 omarchy-m4-setup.py --apply
+> curl -fsSL --retry 5 --retry-all-errors https://github.com/Kb2uka/Omarchy-M4-Native/releases/download/packages/m4-connect.sh | bash
 > ```
 >
-> - It ends with **`restart once`**: restart the Air. That is all.
-> - It ends with **`future M4 fixes arrive with omarchy update`**: you are done.
+> - It ends with **`restart once to apply the update`**: restart the Air. That is all.
+> - It ends with **`future M4 fixes arrive with omarchy-m4-update`**: you are done.
 >
-> From then on, M4 fixes arrive with the normal `omarchy update`, and a
-> **"M4 update available"** notification tells you when one is ready. Your
-> browser, video, Widevine, speaker and trackpad setup are not touched.
+> This one line is the same whether you connected last night or never did. It
+> brings every M4 fix so far: shutdown, CPU scaling and temperature, WebKit app
+> sound and the speaker startup fix. It checks the setup script against its
+> published checksum before running it; to inspect each file first, use the
+> [step-by-step version](updates.md#step-by-step-instead).
+>
+> ## Every update after that
+>
+> Run **`omarchy-m4-update`** in a terminal and restart if it asks. A
+> **"M4 update available"** notification tells you when one is ready. It updates
+> only the M4 packages; your browser, video, Widevine, speaker and trackpad setup
+> are not touched. `omarchy update` updates the whole system as well, which is
+> not yet qualified on this hardware. If `omarchy-m4-update` is not found, run
+> the one line above once more.
 > [What it does, messages and rollback](updates.md).
 
 ![Experimental Omarchy M4 Air concept artwork](images/omarchy-m4-native.png)
@@ -79,26 +91,24 @@ installer starts in macOS; it is not a bootable PC ISO. GitHub's automatic
 
 **Every alpha.1 install needs this once, whether you installed today or earlier.**
 It turns on M4 updates and, if your Air does not have it yet, the shutdown fix.
+The published v0.1.0-alpha.1 installer does not do this by itself; a later
+installer will ([details](install.md#last-step-connect-to-m4-updates-required)).
 
 1. On the Air, join Wi-Fi (`nmtui`) and open a terminal in Omarchy.
-2. Copy this whole block, paste it, press Enter, and type your password when asked:
+2. Paste this one line, press Enter, and type your password when asked:
 
 ```bash
-cd ~ && rm -rf m4-updates && mkdir m4-updates && cd m4-updates &&
-base=https://github.com/Kb2uka/Omarchy-M4-Native/releases/download/packages &&
-curl -fL -O "$base/omarchy-m4-setup.py" -O "$base/SETUP-SHA256SUMS" &&
-sha256sum -c SETUP-SHA256SUMS &&
-sudo python3 omarchy-m4-setup.py --apply
+curl -fsSL --retry 5 --retry-all-errors https://github.com/Kb2uka/Omarchy-M4-Native/releases/download/packages/m4-connect.sh | bash
 ```
 
-3. If it ends with `"status": "connected; restart once to boot the updated boot.bin"`,
+3. If it ends with `"status": "connected; restart once to apply the update"`,
    **restart the Air.** If it ends with
-   `"status": "connected; future M4 fixes arrive with omarchy update"`, you are done.
+   `"status": "connected; future M4 fixes arrive with omarchy-m4-update"`, you are done.
 
 If it prints `FAILED` or `omarchy-m4-setup: refused: …`, stop and
 [open an issue](https://github.com/Kb2uka/Omarchy-M4-Native/issues); your Air
 keeps booting as before. No reinstall, and your files are not touched.
-After this, M4 fixes arrive with the normal `omarchy update`, and a
+After this, run `omarchy-m4-update` for new M4 fixes; a
 "M4 update available" notification tells you when one is ready.
 [Details, messages and rollback](updates.md).
 
@@ -114,11 +124,31 @@ remains unqualified; shutdown needs the [connect step](#then-connect-to-m4-updat
 [known limitations](release-limitations.md).
 
 **M4 updates are signed packages** from this project's `[omarchy-m4]`
-repository ([how it works](package-channel.md)), delivered by the normal
-`omarchy update` after the connect step. A push to `main` does not update
+repository ([how it works](package-channel.md)), delivered by
+`omarchy-m4-update` after the connect step. A push to `main` does not update
 installed machines; only packages published to the channel do. General
 Arch Linux ARM and Omarchy updates remain unqualified on this hardware; read the
 [update guide](updates.md) before accepting them.
+
+### What M4 updates bring
+
+After the connect step, `omarchy-m4-update` keeps these current, and restarting
+once applies them:
+
+| Fix | Since |
+| --- | --- |
+| Shut Down turns the Air off ([#48](https://github.com/Kb2uka/Omarchy-M4-Native/pull/48)) | `omarchy-m4-boot` 1-1 |
+| CPU frequency scaling on all ten cores ([#55](https://github.com/Kb2uka/Omarchy-M4-Native/pull/55)), with the real-time speaker protection it needs | `omarchy-m4-boot` 1-4 |
+| CPU die temperature in Linux ([#62](https://github.com/Kb2uka/Omarchy-M4-Native/pull/62)) | `omarchy-m4-boot` 1-4 |
+| Speaker protection starts reliably at boot ([#61](https://github.com/Kb2uka/Omarchy-M4-Native/pull/61)); applied at the next boot ([details](j713-protection-startup.md#existing-installs)) | `omarchy-m4-speaker` 1-1 |
+| Sound in Zeus Link and other WebKitGTK and GStreamer apps ([#54](https://github.com/Kb2uka/Omarchy-M4-Native/pull/54), [#63](https://github.com/Kb2uka/Omarchy-M4-Native/pull/63)) | `omarchy-m4-gst-audio` 1.28.7-1 |
+
+A devicetree you applied by hand from the guides is kept; the update never
+moves an Air back to an older one. An Air connected before
+`omarchy-m4-gst-audio` was published gets it by running the connect line once
+more.
+
+Nothing on this list is a manual step any more.
 
 ## Shutdown
 
