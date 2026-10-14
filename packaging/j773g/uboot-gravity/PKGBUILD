@@ -24,8 +24,9 @@ makedepends=(bc imagemagick bison flex openssl swig python python-setuptools dtc
 provides=("uboot-asahi=${_ver}.asahi${_asahirel}")
 conflicts=(uboot-asahi)
 
-# Patch order follows asahi-alarm (Arch base), then GravityLinux's spec
-# (Patch127..130 late Asahi NVMe fixes, Patch200..208 Gravity T8132).
+# Patch order follows asahi-alarm (Arch base), then GravityLinux's spec's
+# Patch200..208 (Gravity T8132). The spec's late Asahi NVMe fixes
+# (Patch127..130) are already in the asahi-v2026.07-2 base.
 _patches=(
   disable-VBE-by-default.patch
   enable-bootmenu-by-default.patch
@@ -46,10 +47,6 @@ _patches=(
   raspberrypi-Add-quirk-for-RPi5-2Gb-rev-1.0.patch
   openssl-no-engine.patch
   quiet-console.patch
-  asahi-01e7f95a992.patch
-  asahi-6bfd8a4fa84.patch
-  asahi-2495a9f2ddf.patch
-  asahi-ec49c9d70e6.patch
   gravity-11da9618ef1.patch
   gravity-9b06f6cddc9.patch
   gravity-49840d57974.patch
@@ -72,15 +69,6 @@ prepare() {
   local p
   for p in "${_patches[@]}"; do
     echo "Applying $p"
-    if ! patch -p1 -s --fuzz=0 --no-backup-if-mismatch -f --dry-run < "../$p" >/dev/null 2>&1; then
-      # Already in the asahi-v2026.07-2 base (the late Asahi NVMe fixes)?
-      if patch -p1 -s -R --dry-run -f < "../$p" >/dev/null 2>&1; then
-        echo "  already applied in the base, skipping"
-        continue
-      fi
-      echo "  does not apply" >&2
-      return 1
-    fi
     patch -p1 -s --fuzz=0 --no-backup-if-mismatch -f < "../$p"
   done
 
