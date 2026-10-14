@@ -419,7 +419,9 @@ Changed:
   m1n1-gravity pkgrel 2 and the ladder's build/j773g/m1n1-gravity/m1n1.bin
   (sha 41378d15…). Noted upstream #57's lesson (GPU power limit differs per
   chip) in plan §7 for g8. Image rebuilt so stage 2 carries the fix.
-- Freed ~12 GB of stale smoke copies; the mini has ~48 GiB free.
+- Freed ~12 GB of stale smoke copies; after the image rebuild the mini has
+  ~30 GiB free (Docker VM disk grows with each build; `docker system prune`
+  and build/j773g/image-cache are the levers).
 Result / last log line: QEMU smoke on the composed disk: "omarchy login:".
   No boot attempted on the mini; nothing written to its disk layout, ESP or
   boot policy.
