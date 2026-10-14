@@ -32,6 +32,11 @@ docker run --rm --platform linux/arm64 --privileged -v "$IMG:/img:ro" -v "$WORK:
   [[ -s /w/initramfs.img ]] || debugfs -R 'dump /initramfs-$KERNEL.img /w/initramfs.img' /img/boot.img
   # MMIO virtio: the Asahi config has no generic PCI host bridge for the virt machine.
   cp -f /img/root.img /w/root.img; cp -f /img/boot.img /w/boot.img
+  # The ESP as the installer would create it (volume id 4F4D-5801, esp/ contents),
+  # so the vendor-firmware and encryption hooks find it.
+  rm -f /w/esp.img; truncate -s 524288000 /w/esp.img
+  mkfs.vfat -F 32 -n OMARCHYESP -i 4f4d5801 /w/esp.img >/dev/null
+  mcopy -i /w/esp.img -s -p /img/esp/* ::/
   mkdir -p /m && mount -o loop,ro,subvol=@ /w/root.img /m
   uuid=\$(sed -n 's/^UUID=\([^ ]*\) *\/ .*/\1/p' /m/etc/fstab); umount /m
   echo \"root UUID \$uuid; booting for $LIMIT s (console -> build/j773g/smoke/console.log)\"
@@ -40,6 +45,7 @@ docker run --rm --platform linux/arm64 --privileged -v "$IMG:/img:ro" -v "$WORK:
     -append \"root=UUID=\$uuid rootflags=subvol=@ rw console=ttyAMA0 loglevel=5 systemd.unit=multi-user.target\" \
     -drive if=none,file=/w/root.img,format=raw,id=root -device virtio-blk-device,drive=root \
     -drive if=none,file=/w/boot.img,format=raw,id=boot -device virtio-blk-device,drive=boot \
+    -drive if=none,file=/w/esp.img,format=raw,id=esp -device virtio-blk-device,drive=esp \
     -netdev user,id=n0 -device virtio-net-device,netdev=n0 -device virtio-rng-device 2>&1 | tee /w/console.log || true
   echo; echo '== verdict'
   grep -E 'Reached target .*Multi-User|Welcome to|omarchy-mac-first-boot|omarchy-provision|Failed to start|Kernel panic|login:' /w/console.log | head -20"

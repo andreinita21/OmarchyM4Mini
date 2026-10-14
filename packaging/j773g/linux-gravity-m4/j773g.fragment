@@ -34,3 +34,8 @@ CONFIG_SERIAL_AMBA_PL011=y
 CONFIG_SERIAL_AMBA_PL011_CONSOLE=y
 CONFIG_VIRTIO_PCI=y
 CONFIG_VIRTIO_MMIO=y
+
+# Root filesystem built in: omarchy-mac-boot's initramfs hooks mount and probe
+# the btrfs root before udev has autoloaded modules (seen in the QEMU smoke
+# boot: "unknown filesystem type 'btrfs'", then a by-uuid timeout).
+CONFIG_BTRFS_FS=y
