@@ -32,11 +32,12 @@ ALARM_SERVER='https://arm-mirror.omarchy.org/$arch/$repo'
 OMARCHY_KEY=40DFB630FF42BCFFB047046CF0134EE680CAC571
 ASAHI_KEY=12CE6799A94A3F1B5DDFFE88F576553597FB8FEB
 
-# Fixed identities, as the official image has them (the installer template
-# and fstab name them). Different from Omarchy's own so the two never collide.
-ROOT_UUID=4a373733-4752-4f4f-5400-000000000001
-BOOT_UUID=4a373733-424f-4f54-0000-000000000001
-ESP_VOLUME_ID=0x4a373733
+# Omarchy's fixed identities, exactly: omarchy-mac-boot's initramfs hooks
+# (omarchy-mac-encrypt, omarchy-vendorfw-initrd) and provision.sh hardcode the
+# ESP volume id 4F4D-5801 and the boot UUID, so a different id stops first boot.
+ROOT_UUID=4f4d5801-524f-4f54-8000-000000000001
+BOOT_UUID=4f4d5801-424f-4f54-8000-000000000001
+ESP_VOLUME_ID=0x4f4d5801
 ESP_SIZE=524288000          # 500 MB, Gravity's and Omarchy's size
 BOOT_SIZE=2147483648        # 2 GiB
 ROOT_SIZE=34359738368       # 32 GiB template size; the file is shrunk to content, growfs expands

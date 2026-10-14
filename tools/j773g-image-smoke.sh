@@ -30,6 +30,7 @@ docker run --rm --platform linux/arm64 --privileged -v "$IMG:/img:ro" -v "$WORK:
   # driver (the chroot build autodetected nothing).
   debugfs -R 'dump /initramfs-$KERNEL-fallback.img /w/initramfs.img' /img/boot.img 2>/dev/null
   [[ -s /w/initramfs.img ]] || debugfs -R 'dump /initramfs-$KERNEL.img /w/initramfs.img' /img/boot.img
+  # MMIO virtio: the Asahi config has no generic PCI host bridge for the virt machine.
   cp -f /img/root.img /w/root.img; cp -f /img/boot.img /w/boot.img
   mkdir -p /m && mount -o loop,ro,subvol=@ /w/root.img /m
   uuid=\$(sed -n 's/^UUID=\([^ ]*\) *\/ .*/\1/p' /m/etc/fstab); umount /m
@@ -37,8 +38,8 @@ docker run --rm --platform linux/arm64 --privileged -v "$IMG:/img:ro" -v "$WORK:
   timeout --foreground $LIMIT qemu-system-aarch64 -M virt -accel tcg,thread=multi -cpu max -smp 4 -m 4096 -nographic \
     -kernel /w/vmlinuz -initrd /w/initramfs.img \
     -append \"root=UUID=\$uuid rootflags=subvol=@ rw console=ttyAMA0 loglevel=5 systemd.unit=multi-user.target\" \
-    -drive if=none,file=/w/root.img,format=raw,id=root -device virtio-blk-pci,drive=root \
-    -drive if=none,file=/w/boot.img,format=raw,id=boot -device virtio-blk-pci,drive=boot \
-    -netdev user,id=n0 -device virtio-net-pci,netdev=n0 -device virtio-rng-pci 2>&1 | tee /w/console.log || true
+    -drive if=none,file=/w/root.img,format=raw,id=root -device virtio-blk-device,drive=root \
+    -drive if=none,file=/w/boot.img,format=raw,id=boot -device virtio-blk-device,drive=boot \
+    -netdev user,id=n0 -device virtio-net-device,netdev=n0 -device virtio-rng-device 2>&1 | tee /w/console.log || true
   echo; echo '== verdict'
   grep -E 'Reached target .*Multi-User|Welcome to|omarchy-mac-first-boot|omarchy-provision|Failed to start|Kernel panic|login:' /w/console.log | head -20"
