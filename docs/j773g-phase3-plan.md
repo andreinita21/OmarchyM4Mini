@@ -207,9 +207,9 @@ update` against edge) with zero internal-disk writes. Needs a USB drive
 
 | # | Step | Where | Model | Approval | Depends on |
 |---|---|---|---|---|---|
-| P3.1 | PKGBUILDs: `linux-gravity-m4`, `m1n1-gravity`, `uboot-gravity`, `omarchy-j773g`; ALARM build container; build into `build/j773g/pkgs/` | mini (Docker) | Opus / medium | no | — (can start now) |
-| P3.2 | `tools/j773g-image.sh` (§4) + QEMU smoke test; `docs/j773g-image.md` | mini (Docker) | Opus / medium | no | P3.1 |
-| P3.3 | Upstream drafts: omarchy-mac-pkgs `omarchy-mac-kernel` provides check; omarchy-mac-installer catalog note for `apple,j773g`; Gravity issues (already drafted) | repo | Opus / medium | Andrei posts | P3.1 |
+| P3.1 | PKGBUILDs: `linux-gravity-m4`, `m1n1-gravity`, `uboot-gravity`, `omarchy-j773g`; ALARM build container; build into `build/j773g/pkgs/` | mini (Docker) | Opus / medium | no | **done 2026-10-14** (`packaging/j773g/`) |
+| P3.2 | `tools/j773g-image.sh` (§4) + QEMU smoke test; `docs/j773g-image.md` | mini (Docker) | Opus / medium | no | **done 2026-10-14**: image boots in QEMU to the login prompt |
+| P3.3 | Upstream drafts: omarchy-mac-pkgs `omarchy-mac-kernel` provides check; omarchy-mac-installer catalog note for `apple,j773g`; Gravity issues (already drafted) | repo | Opus / medium | Andrei posts | drafted 2026-10-14 (`docs/j773g-omarchy-issue-drafts.md`) |
 | P3.4 | Rung `u0`: Omarchy root on USB, kernel from RAM | mini + host | Opus / medium (Fable if stuck) | USB drive only | ladder ≥ g6, P3.2 |
 | P3.5 | §5a: write `root.img`, ESP files, stage 2 swap; `boot.bin.gravity` kept | mini | Opus / medium | **yes, per command** | P3.4 green |
 | P3.6 | First boot: owner setup, `omarchy-apple-silicon-boot-check`, `omarchy update`, shutdown test (g7 PMU nodes are in our DTB) | mini | Opus / medium | no | P3.5 |

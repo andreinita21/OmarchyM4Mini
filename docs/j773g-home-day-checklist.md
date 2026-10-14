@@ -152,3 +152,11 @@ If a rung is black:
 - Restore Gravity's stage 2 (section 3 undo) if you want the stub to boot
   Gravity again.
 - Commit NOTES.md and any DT fixes; raw logs and ADT dumps stay in private/.
+
+## After the ladder: Phase 3 (Omarchy)
+
+Once `g6-display` passes, the next hardware rung is `u0` from
+[j773g-phase3-plan.md](j773g-phase3-plan.md) §5: the Omarchy image
+(`tools/j773g-image.sh`, already QEMU-tested) written to a USB SSD and booted
+with the J773g kernel from RAM. Nothing on the internal disk changes until you
+approve §5a.

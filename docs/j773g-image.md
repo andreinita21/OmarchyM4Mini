@@ -1,8 +1,9 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # The J773g Omarchy image (Phase 3, P3.1–P3.2)
 
-Status 2026-10-14: **build tooling written; nothing booted.** Plan and
-decisions: [j773g-phase3-plan.md](j773g-phase3-plan.md).
+Status 2026-10-14: **packages and image build; the image boots in QEMU to the
+login prompt.** Nothing has run on the mini. Plan and decisions:
+[j773g-phase3-plan.md](j773g-phase3-plan.md).
 
 ## Pieces
 
@@ -62,11 +63,28 @@ rehearsal probe.
   `SERIAL_AMBA_PL011` + built-in virtio so QEMU can show a console. The Asahi
   config has no generic PCI host bridge, so QEMU uses virtio-mmio devices.
 
+## QEMU smoke boot (2026-10-14)
+
+`tools/j773g-image-smoke.sh` lays `esp/`, `boot.img` and `root.img` into one
+GPT disk (EFI 500 MB, Boot 2 GiB, Root), as the installer would, and boots the
+packaged kernel with the image's own initramfs on a virt machine (TCG inside
+the container, about 7 minutes to the prompt). Seen on the console:
+
+- the vendor-firmware and encryption hooks find the ESP and the root partition;
+  encryption correctly declines ("not a fresh image" without an installer
+  `install.conf`), the root is mounted by UUID and systemd switches root;
+- "Omarchy first boot" runs the deferred hardware steps ("Setting up your
+  Mac's hardware...") and finishes; owner provisioning starts and waits for
+  the wizard on tty1; `omarchy login:` appears;
+- the only failure is speakersafetyd, which has no speaker hardware in QEMU
+  (and no speaker driver in this kernel on purpose).
+
+This proves the root, the kernel package, the initramfs hooks and the boot
+identities. It proves nothing about m1n1, U-Boot, Limine or the Mac.
+
 ## Not done yet
 
-- First run of `tools/j773g-image.sh` (needs the kernel package built and
-  ~4 GB of downloads).
-- QEMU smoke test of `root.img` with the J773g kernel (`Image` from the
-  package, generic virt machine): systemd to `multi-user.target`,
-  `omarchy-hw-platform` → `aarch64-apple` from the manifest.
-- Rung `u0` and everything on hardware (plan §5–§6).
+- Rung `u0` (Omarchy root on a USB SSD, kernel from RAM) and everything on
+  hardware (plan §5–§6). U-Boot → Limine on T8132 is the first unknown there.
+- The kernel command line for the Mac (`J773G_CMDLINE`) once the ladder says
+  what the mini needs.

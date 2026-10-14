@@ -369,3 +369,29 @@ Result / last log line: no boot attempted; nothing written to the mini's
 Next step: finish linux-gravity-m4 and omarchy-j773g builds; run
   tools/j773g-image.sh (expect iterations: omarchy-apply-system in a chroot,
   Limine activation); smoke-boot with tools/j773g-image-smoke.sh; then NOTES.
+
+## 2026-10-14 09:30 — setup 9 (packages built, image boots in QEMU)
+Model/effort: Fable 5.1 / high (continuing at Andrei's request)
+Changed:
+- All four J773g packages build (tools/j773g-pkg.sh all): m1n1-gravity,
+  uboot-gravity (asahi-v2026.07-2 base already contains the spec's four late
+  Asahi NVMe patches; Gravity's nine apply), linux-gravity-m4 7.1.13.gravity1-3
+  (~9 min), omarchy-j773g. Kernel fragment lessons: DRM_APPLE=y needs TYPEC=y
+  (modpost on non-exported helpers), BTRFS_FS=y (Mac initramfs hooks mount
+  the root before module autoload), PL011 + built-in virtio for QEMU.
+- tools/j773g-image.sh builds the image in ~7 min (893 packages, root.img
+  12.7 GB, 62 MB UKI, stage 2 = m1n1 + t8132-j773g.dtb + U-Boot). Uses
+  Omarchy's fixed disk identities (ESP 4F4D-5801 etc.): omarchy-mac-boot
+  hardcodes them.
+- tools/j773g-image-smoke.sh: GPT disk (ESP/Boot/Root) on a QEMU virt
+  machine with virtio-mmio -> switch root, "Omarchy first boot" finishes,
+  owner provisioning starts, `omarchy login:` prompt. Only speakersafetyd
+  fails (no speaker hardware, driver compiled out).
+- docs/j773g-image.md findings; plan table P3.1/P3.2 done; checklist pointer.
+Result / last log line: QEMU: "Finished Omarchy first boot ... omarchy login:".
+  No boot attempted on the mini; nothing written to its disk layout, ESP or
+  boot policy.
+Next step: hardware (Andrei): route A, ladder stock -> g0..g8, then rung u0
+  (image on a USB SSD, kernel from RAM). Offline leftovers: J773G_CMDLINE
+  from the ladder; posting the upstream drafts (Andrei); AID36 audio check;
+  mesa-gravity-m4 after g8. Switch back to Opus 5.5 / medium.
