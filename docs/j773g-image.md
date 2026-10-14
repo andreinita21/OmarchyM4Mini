@@ -45,6 +45,23 @@ Differences from the official producer, on purpose: no signed candidate set
 edge), `image_profile=lab`, no package provenance record, no first-boot
 rehearsal probe.
 
+## Findings from the first builds (2026-10-14)
+
+- The four packages build in the ALARM container: m1n1-gravity 208 KB,
+  uboot-gravity 254 KB (carries `apple,t8132` and the `gravity,efi-system-partition`
+  lookup), linux-gravity-m4 30 MB + headers (about 9 min), omarchy-j773g.
+- The image builds end to end in about 7 minutes once the package cache is
+  warm: 893 packages, `root.img` 12.7 GB, a 62 MB UKI, stage 2 = m1n1 +
+  exactly one device tree (t8132-j773g) + U-Boot.
+- `omarchy-mac-boot` hardcodes Omarchy's disk identities (ESP volume id
+  `4F4D-5801`, boot UUID `4f4d5801-424f-…`, root label `OMARCHY_ROOT`) in its
+  initramfs hooks and provisioning; the image uses exactly those.
+- Kernel config lessons (all in `j773g.fragment`): `DRM_APPLE` must be built
+  in (modpost: non-exported arch helpers) which needs `TYPEC=y`; `BTRFS_FS=y`
+  because the Mac boot hooks mount the root before udev autoloads modules;
+  `SERIAL_AMBA_PL011` + built-in virtio so QEMU can show a console. The Asahi
+  config has no generic PCI host bridge, so QEMU uses virtio-mmio devices.
+
 ## Not done yet
 
 - First run of `tools/j773g-image.sh` (needs the kernel package built and
