@@ -3,7 +3,7 @@
 # Copyright (c) 2026 KB2UKA
 # boot.sh <dtb> <tag> [kernel]  — one logged Linux boot through the m1n1 proxy.
 # Set M1N1DEVICE explicitly to the target's proxy interface, not its HV UART.
-# BOOT_KIT, PYTHON and BOOT_ARGS can override the defaults below.
+# BOOT_KIT, PYTHON, BOOT_ARGS and BOOT_INITRD can override the defaults below.
 set -euo pipefail
 unset CDPATH
 DTB=${1:?usage: boot.sh <dtb> <tag> [kernel]}
@@ -14,7 +14,7 @@ DEV=${M1N1DEVICE:?set M1N1DEVICE to the target proxy device}
 B=${BOOT_KIT:-$HOME/omarchy-firstboot}
 PYTHON=${PYTHON:-python3}
 KERNEL=${3:-$B/Image-m4hacks-smc-nvme.gz}
-INITRD=$B/initramfs.cpio.gz
+INITRD=${BOOT_INITRD:-$B/initramfs.cpio.gz}
 ARGS=${BOOT_ARGS:-nosmp idle=nop panic=0 console=tty0 fbcon=nodefer loglevel=7}
 [[ -c "$DEV" && -r "$DEV" && -w "$DEV" ]] || {
   echo "proxy device is not an accessible character device: $DEV" >&2; exit 3;

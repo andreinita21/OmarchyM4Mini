@@ -195,10 +195,11 @@ alongside within the 60–80 GB planned in the home-day checklist, so §5a
 replaces Gravity. If Andrei wants to keep Gravity bootable, give Linux
 ≥ 110 GB at install time and use §5b into free space with its own EFI.
 
-**Before any of that: rung `u0`.** Boot our kernel from RAM (`tools/j773g-boot.sh`
-with a `root=PARTUUID=… rootflags=subvol=@` command line and an initramfs
-built by `mkinitcpio` from the image) against the **Omarchy root written to
-a USB SSD** on a rear port. That validates the whole userland on the real
+**Before any of that: rung `u0`.** Boot our kernel from RAM (`tools/j773g-boot.sh u0`:
+the packaged kernel, the image's own `mkinitcpio` initramfs and Limine's
+`root=UUID=… rootflags=subvol=@` line, kit made by `tools/j773g-disk.sh
+compose`) against the **Omarchy root written to a USB SSD** (`tools/j773g-disk.sh
+write <disk>`) on a rear port. That validates the whole userland on the real
 mini (Hyprland on simpledrm or DCP, SDDM, keyboard, Ethernet, `omarchy
 update` against edge) with zero internal-disk writes. Needs a USB drive
 ≥ 32 GB and rung `g3-usb` passing.
@@ -210,7 +211,7 @@ update` against edge) with zero internal-disk writes. Needs a USB drive
 | P3.1 | PKGBUILDs: `linux-gravity-m4`, `m1n1-gravity`, `uboot-gravity`, `omarchy-j773g`; ALARM build container; build into `build/j773g/pkgs/` | mini (Docker) | Opus / medium | no | **done 2026-10-14** (`packaging/j773g/`) |
 | P3.2 | `tools/j773g-image.sh` (§4) + QEMU smoke test; `docs/j773g-image.md` | mini (Docker) | Opus / medium | no | **done 2026-10-14**: image boots in QEMU to the login prompt |
 | P3.3 | Upstream drafts: omarchy-mac-pkgs `omarchy-mac-kernel` provides check; omarchy-mac-installer catalog note for `apple,j773g`; Gravity issues (already drafted) | repo | Opus / medium | Andrei posts | drafted 2026-10-14 (`docs/j773g-omarchy-issue-drafts.md`) |
-| P3.4 | Rung `u0`: Omarchy root on USB, kernel from RAM | mini + host | Opus / medium (Fable if stuck) | USB drive only | ladder ≥ g6, P3.2 |
+| P3.4 | Rung `u0`: Omarchy root on USB, kernel from RAM | mini + host | Opus / medium (Fable if stuck) | USB drive only | ladder ≥ g6, P3.2. **Tooling done 2026-10-14**: `tools/j773g-disk.sh compose` / `write <disk>`, `tools/j773g-boot.sh u0` ([j773g-image.md](j773g-image.md), rung u0); the hardware run is pending |
 | P3.5 | §5a: write `root.img`, ESP files, stage 2 swap; `boot.bin.gravity` kept | mini | Opus / medium | **yes, per command** | P3.4 green |
 | P3.6 | First boot: owner setup, `omarchy-apple-silicon-boot-check`, `omarchy update`, shutdown test (g7 PMU nodes are in our DTB) | mini | Opus / medium | no | P3.5 |
 | P3.7 | Later: `mesa-gravity-m4` (after g8), Wi-Fi V=a NVRAM override in `/usr/lib/firmware/brcm/` (kernel searches it before `vendor/`), Bluetooth (Gravity's U-Boot already supplies BTBF from the ESP), audio with the reviewed limiter | mini | Opus; Fable for new DT nodes | audio: yes | P3.6 |

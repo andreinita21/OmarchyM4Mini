@@ -13,6 +13,8 @@ login prompt.** Nothing has run on the mini. Plan and decisions:
 | `tools/j773g/Dockerfile.alarm`, `tools/j773g-pkg.sh` | Arch Linux ARM build container and `makepkg` wrapper. `tools/j773g-pkg.sh image`, then `tools/j773g-pkg.sh all` → `build/j773g/pkgs/` |
 | `tools/j773g-image.sh`, `tools/j773g/image-build.sh` | The image builder (privileged container: loop devices + btrfs). Output `build/j773g/image/`: `root.img`, `boot.img`, `esp/`, `installer_data.json`, `packages.txt`, `logs/` |
 | `tools/j773g/finalize-root`, `tools/j773g/node.pin` | Copied unchanged (MIT) from omacom/omarchy-mac-installer `image-builder/builder/`: the image-only root edits (locale, keyboard, GRUB defaults, splash, SDDM, identity scrub) and the Node.js pin owner provisioning unpacks offline |
+| `tools/j773g/compose-disk.sh`, `tools/j773g-disk.sh` | Rung `u0`: one sparse GPT disk image (EFI 500 MB with volume id `4F4D-5801`, Boot 2 GiB, Root) from the image, the RAM-boot kit `build/j773g/disk/u0/` (`Image.gz`, the image's `initramfs.img`, `cmdline`), and a USB writer that refuses anything but a whole external USB disk |
+| `tools/j773g-image-smoke.sh` | QEMU boot of that same `disk.img` (with `-snapshot`, so the file is never changed) |
 
 ## What the builder does (mirrors `build-mac-image`)
 
@@ -65,10 +67,10 @@ rehearsal probe.
 
 ## QEMU smoke boot (2026-10-14)
 
-`tools/j773g-image-smoke.sh` lays `esp/`, `boot.img` and `root.img` into one
-GPT disk (EFI 500 MB, Boot 2 GiB, Root), as the installer would, and boots the
-packaged kernel with the image's own initramfs on a virt machine (TCG inside
-the container, about 7 minutes to the prompt). Seen on the console:
+`tools/j773g-image-smoke.sh` boots the composed `disk.img` (EFI 500 MB, Boot
+2 GiB, Root, as the installer would lay it out) with the rung-u0 kernel and
+initramfs on a virt machine (TCG inside the container, about 7 minutes to the
+prompt). Seen on the console:
 
 - the vendor-firmware and encryption hooks find the ESP and the root partition;
   encryption correctly declines ("not a fresh image" without an installer
@@ -82,9 +84,44 @@ the container, about 7 minutes to the prompt). Seen on the console:
 This proves the root, the kernel package, the initramfs hooks and the boot
 identities. It proves nothing about m1n1, U-Boot, Limine or the Mac.
 
+## Rung `u0`: the image on a USB SSD, kernel from RAM (tooling ready 2026-10-14)
+
+Plan §5 says to prove the whole userland on the real mini before anything on
+the internal disk changes. The pieces exist and were exercised offline:
+
+1. `tools/j773g-disk.sh compose` (on the mini, Docker) lays `esp/`, `boot.img`
+   and `root.img` into `build/j773g/disk/disk.img`, a sparse GPT disk with the
+   installer's layout (EFI 500 MB, Boot 2 GiB, Root), and pulls the RAM-boot
+   kit out of `boot.img`: the packaged kernel as `Image.gz` (m1n1's
+   `linux.py` chooses the decompressor by suffix), the initramfs mkinitcpio
+   built inside the image (Omarchy's Mac hooks plus `uas`, `usb-storage`,
+   `xhci`, `dwc3`, `phy-apple-atc`, `tps6598x`, `btrfs`: 98 modules, checked
+   with `lsinitcpio`), and `cmdline` (Limine's `root=UUID=… rootflags=subvol=@`
+   line without `quiet splash`). `disk.env` records the identities and
+   offsets.
+2. `tools/j773g-disk.sh write disk4` (any machine with the USB SSD) replaces
+   that disk with `disk.img`. It accepts only a whole, external, USB disk
+   (macOS: `diskutil info` says `Internal: No`, `Protocol: USB`, `Device
+   Location: External`, and it is not the disk holding `/`; Linux: `lsblk`
+   transport `usb`, nothing mounted) and makes you type the identifier back.
+   Checked read-only on the mini: `disk0` and `disk3` (macOS) are refused.
+3. `tools/j773g-boot.sh u0` (on the proxy host, `M1N1DEVICE` set) boots that
+   kernel and initramfs through m1n1 with the highest passed ladder DTB
+   (`U0_RUNG`, default `g6-display`), `BOOT_ARGS` (the ladder's defaults) plus
+   the kit's `cmdline` plus `J773G_CMDLINE`. `tools/boot.sh` learned
+   `BOOT_INITRD` for this.
+
+Expected on the mini: the vendor-firmware hook finds the ESP by volume id
+(no `asahi,efi-system-partition` property in a RAM boot; QEMU showed the same
+path), the root mounts from the USB disk, Omarchy's first boot and owner setup
+run on HDMI with the USB keyboard. Failure modes to expect: no USB storage
+before `g3-usb` passes; a very slow first boot if the drive is a stick rather
+than an SSD. Nothing on the internal disk is touched; macOS and the Gravity
+stub stay as they are.
+
 ## Not done yet
 
-- Rung `u0` (Omarchy root on a USB SSD, kernel from RAM) and everything on
-  hardware (plan §5–§6). U-Boot → Limine on T8132 is the first unknown there.
+- Rung `u0` on the mini (needs the USB SSD and ladder ≥ g6), then plan §5a
+  and everything after it. U-Boot → Limine on T8132 is the first unknown.
 - The kernel command line for the Mac (`J773G_CMDLINE`) once the ladder says
   what the mini needs.

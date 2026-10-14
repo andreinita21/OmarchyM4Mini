@@ -159,4 +159,16 @@ Once `g6-display` passes, the next hardware rung is `u0` from
 [j773g-phase3-plan.md](j773g-phase3-plan.md) §5: the Omarchy image
 (`tools/j773g-image.sh`, already QEMU-tested) written to a USB SSD and booted
 with the J773g kernel from RAM. Nothing on the internal disk changes until you
-approve §5a.
+approve §5a. The three commands (details in
+[j773g-image.md](j773g-image.md), "Rung u0"):
+
+```sh
+tools/j773g-disk.sh compose          # on the mini: build/j773g/disk/disk.img + u0 kit (done once already)
+tools/j773g-disk.sh info             # lists the external USB disks it would accept
+tools/j773g-disk.sh write disk4      # replaces that USB disk; refuses internal disks, asks you to type "disk4"
+M1N1DEVICE=/dev/cu.usbmodem… tools/j773g-boot.sh u0     # host: kernel + initramfs from RAM, root on the USB SSD
+```
+
+Plug the SSD into a **rear** USB port (the front ports hang off the GL3590 hub
+that the ladder brings up later). `U0_RUNG=g7-poweroff` if that rung passed,
+`J773G_CMDLINE="…"` for anything the ladder taught us.
