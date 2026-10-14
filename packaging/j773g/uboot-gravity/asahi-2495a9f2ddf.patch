@@ -1,0 +1,48 @@
+From 2495a9f2ddff81588de3ef10b5de7f51e6dc4d0d Mon Sep 17 00:00:00 2001
+From: Janne Grunau <j@jannau.net>
+Date: Fri, 4 Sep 2026 20:16:33 +0200
+Subject: [PATCH] nvme: apple: Add BUG_ON for non page aligned admin queue
+ buffers
+
+Apple controllers seem to require any queue buffers on the admin queue
+to be aligned to the NVMe controller page size. Weirdly, this constraint
+does not apply to the i/o queue where any alignment is fine. This has
+always been required on pre-M1 controllers and is required starting with
+macOS 15 firmware or post-M4 controllers again. On M1/M2/M3 ithere was a
+chicken bit to disable this requirement.
+
+U-boot appears to always use page aligned buffers for the admin queue.
+Add BUG_ON() to make it very obvious if/when that changes or wasn't true
+to begin with.
+
+Signed-off-by: Janne Grunau <j@jannau.net>
+---
+ drivers/nvme/nvme_apple.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/nvme/nvme_apple.c b/drivers/nvme/nvme_apple.c
+index f615f8fac4a..fd88b0ac160 100644
+--- a/drivers/nvme/nvme_apple.c
++++ b/drivers/nvme/nvme_apple.c
+@@ -12,6 +12,7 @@
+ #include <asm/io.h>
+ #include <asm/arch/rtkit.h>
+ #include <asm/arch/sart.h>
++#include <linux/bug.h>
+ #include <linux/iopoll.h>
+ #include <linux/sizes.h>
+ 
+@@ -119,6 +120,11 @@ static void apple_nvme_submit_cmd(struct nvme_queue *nvmeq,
+ 	struct ans_nvmmu_tcb *tcb;
+ 	u16 tail = nvmeq->sq_tail;
+ 
++	if (nvmeq->qid == NVME_ADMIN_Q) {
++		BUG_ON(!IS_ALIGNED(cmd->common.prp1, nvmeq->dev->page_size));
++		BUG_ON(!IS_ALIGNED(cmd->common.prp2, nvmeq->dev->page_size));
++	}
++
+ 	tcb = ((void *)priv->tcbs[nvmeq->qid]) + tail * ANS_NVMMU_TCB_PITCH;
+ 	memset(tcb, 0, sizeof(*tcb));
+ 	tcb->opcode = 0;
+-- 
+2.47.3

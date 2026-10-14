@@ -1,0 +1,12 @@
+#!/bin/bash
+# SPDX-License-Identifier: MIT
+# omarchy-mac-boot's omarchy-mac-kernel only knows linux-asahi and
+# linux-aurora. Until its provides-based lookup lands upstream
+# (docs/j773g-omarchy-issue-drafts.md), this /usr/local/bin shim answers for
+# the mini's kernel package, which provides linux-asahi.
+set -euo pipefail
+if pacman -Qq linux-gravity-m4 >/dev/null 2>&1; then
+  echo linux-gravity-m4
+  exit 0
+fi
+exec /usr/bin/omarchy-mac-kernel "$@"

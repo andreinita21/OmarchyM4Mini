@@ -1,0 +1,113 @@
+# SPDX-License-Identifier: MIT
+# U-Boot for the M4 Mac mini (J773g): asahi-alarm's uboot-asahi base
+# (AsahiLinux/u-boot asahi-v2026.07-2 + the Arch patch set, with Omarchy's
+# silent console) plus GravityLinux's T8132 patches from GravityLinux/packages
+# uboot-tools (M4 memory map, ANS2 NVMe, ESP discovery through the
+# gravity,efi-system-partition property, J773g Bluetooth and Wi-Fi
+# calibration from the ESP). docs/j773g-phase3-plan.md §3.
+# Based on the asahi-alarm uboot-asahi PKGBUILD and Omarchy's copy of it.
+
+pkgname=uboot-gravity
+_ver=2026.07
+_asahirel=2
+_gravityrel=203   # GravityLinux/packages uboot-tools Release 203.gravity
+
+pkgver=${_ver}.asahi${_asahirel}.gravity${_gravityrel}
+pkgrel=1
+pkgdesc='U-Boot for the M4 Mac mini (Asahi base, Gravity T8132 patches, silent console)'
+_commit_id=asahi-v${_ver}-${_asahirel}
+_srcname=u-boot-${_commit_id}
+arch=('aarch64')
+url='https://github.com/GravityLinux/u-boot'
+license=('GPL-2.0-or-later')
+makedepends=(bc imagemagick bison flex openssl swig python python-setuptools dtc)
+provides=("uboot-asahi=${_ver}.asahi${_asahirel}")
+conflicts=(uboot-asahi)
+
+# Patch order follows asahi-alarm (Arch base), then GravityLinux's spec
+# (Patch127..130 late Asahi NVMe fixes, Patch200..208 Gravity T8132).
+_patches=(
+  disable-VBE-by-default.patch
+  enable-bootmenu-by-default.patch
+  uefi-distro-load-FDT-from-any-partition-on-boot-device.patch
+  uefi-Add-all-options-for-EFI-System-Partitions.patch
+  uefi-initial-find_fdt_location-for-finding-the-DT-on-disk.patch
+  uefi-enable-SetVariableRT-with-volotile-storage.patch
+  uefi-enable-https-boot-by-default.patch
+  pylibfdt-Replace-removed-SWIG-Python-2-compatibility-macros.patch
+  USB-PD-TCPM-improvements.patch
+  rockchip-Enable-preboot-start-for-pci-usb.patch
+  rockchip-rk3568-nanopi-r5-Drop-duplicated-extra-sdhc.patch
+  rockchip-rk356x-Stop-overriding-sdhci-mmc-aliases.patch
+  p3450-fix-board.patch
+  JetsonTX2-Fix-upstream-device-tree-naming.patch
+  Allwinner-fix-booting-on-a-number-of-devices.patch
+  Fix-NVMe-not-only-on-Raspberry-Pi-5.patch
+  raspberrypi-Add-quirk-for-RPi5-2Gb-rev-1.0.patch
+  openssl-no-engine.patch
+  quiet-console.patch
+  asahi-01e7f95a992.patch
+  asahi-6bfd8a4fa84.patch
+  asahi-2495a9f2ddf.patch
+  asahi-ec49c9d70e6.patch
+  gravity-11da9618ef1.patch
+  gravity-9b06f6cddc9.patch
+  gravity-49840d57974.patch
+  gravity-2db9584de33.patch
+  gravity-61d4b40d3fa.patch
+  gravity-4b738f4f51b.patch
+  gravity-ddecfb8eb6a.patch
+  gravity-6e594cafea8.patch
+  gravity-a2f6913694f.patch
+)
+source=(
+  "u-boot-${_commit_id}.tar.gz::https://github.com/AsahiLinux/u-boot/archive/${_commit_id}.tar.gz"
+  "${_patches[@]}"
+)
+sha256sums=('ff36bacdeb91c2bb911ce6fdd198fb1a943c47a6931f986cecd22443b04c1b06')
+for _p in "${_patches[@]}"; do sha256sums+=('SKIP'); done
+
+prepare() {
+  cd "${srcdir}/$_srcname"
+  local p
+  for p in "${_patches[@]}"; do
+    echo "Applying $p"
+    if ! patch -p1 -s --fuzz=0 --no-backup-if-mismatch -f --dry-run < "../$p" >/dev/null 2>&1; then
+      # Already in the asahi-v2026.07-2 base (the late Asahi NVMe fixes)?
+      if patch -p1 -s -R --dry-run -f < "../$p" >/dev/null 2>&1; then
+        echo "  already applied in the base, skipping"
+        continue
+      fi
+      echo "  does not apply" >&2
+      return 1
+    fi
+    patch -p1 -s --fuzz=0 --no-backup-if-mismatch -f < "../$p"
+  done
+
+  make apple_m1_defconfig
+  scripts/config --file .config \
+    -e OF_UPSTREAM_BUILD_VENDOR \
+    --set-str OF_UPSTREAM_VENDOR apple
+  # Silent console, no logo, no boot delay (Omarchy's uboot-asahi).
+  scripts/config --file .config \
+    -e SILENT_CONSOLE \
+    -e SILENT_CONSOLE_UPDATE_ON_SET \
+    -e SILENT_CONSOLE_UPDATE_ON_RELOC \
+    -e SILENT_CONSOLE_UNTIL_ENV \
+    -e SILENT_U_BOOT_ONLY \
+    -d VIDEO_LOGO \
+    --set-val BOOTDELAY 0
+  make olddefconfig
+}
+
+build() {
+  cd "${srcdir}/$_srcname"
+  make
+}
+
+package() {
+  cd "${srcdir}"
+  local tgtdir="$pkgdir/usr/lib/asahi-boot"
+  install -Dt "$tgtdir" -m644 "$_srcname/u-boot-nodtb.bin"
+  install -Dm644 "$_srcname/Licenses/gpl-2.0.txt" "$pkgdir/usr/share/licenses/$pkgname/gpl-2.0.txt"
+}

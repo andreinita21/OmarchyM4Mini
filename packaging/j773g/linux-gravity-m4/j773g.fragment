@@ -1,0 +1,21 @@
+# J773g (M4 Mac mini) choices on top of asahi-alarm's linux-asahi 7.1.13
+# config, applied with scripts/kconfig/merge_config.sh in PKGBUILD prepare().
+# Everything else stays the Arch Linux ARM Asahi distro configuration.
+
+# Gravity's M4 GPU driver (Rust), as a module like Gravity's own packaging.
+CONFIG_DRM_ASAHI_M4=m
+
+# Internal speaker path stays off until the J773g safety review is done
+# (docs/j773g-speaker-safety.md, START_HERE rule 6). HDMI audio through
+# DRM_APPLE_AUDIO is unaffected.
+CONFIG_SND_SOC_APPLE_T8132_SPEAKER=n
+CONFIG_SND_SOC_TAS2764=n
+CONFIG_SND_SOC_APPLE_MCA=n
+CONFIG_SND_SOC_APPLE_MACAUDIO=n
+
+# Crash console for the next boot (tools/j773g/init prints it; so can
+# /sys/fs/pstore on the installed system).
+CONFIG_PSTORE=y
+CONFIG_PSTORE_RAM=y
+CONFIG_PSTORE_CONSOLE=y
+CONFIG_PSTORE_PMSG=y

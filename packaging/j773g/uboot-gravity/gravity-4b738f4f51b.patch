@@ -1,0 +1,42 @@
+From 4b738f4f51bc47778cd8dfd7125ae0802399cd7b Mon Sep 17 00:00:00 2001
+From: Niklas Sheth <hi@niklassheth.com>
+Date: Fri, 18 Sep 2026 16:42:41 -0400
+Subject: [PATCH] nvme: apple: Hold ANS reset during controller removal
+
+The controller removal path asserted and immediately deasserted ANS reset.
+On T8132 this left the subsequent Linux boot stuck before SART probe
+completed, after U-Boot had successfully read the kernel and initramfs.
+
+Hold reset for 10 microseconds, matching m1n1's ANS reset sequence. A
+matched build without the delay reproduces the stall; the delayed reset
+boots Linux through U-Boot's EFI stub path and mounts its NVMe root.
+
+Validated on an M4 Mac mini with the 25G83 firmware and the development
+7.1.13-ARCH #109 kernel, with and without the DockChannel early console.
+
+The reset hold follows Hector Martin's m1n1 commit a5a57c230e7f
+("pmgr: Add pmgr_adt_reset()"). The tested duration matches m1n1;
+it is not a measured minimum reset pulse width.
+
+Link: https://github.com/AsahiLinux/m1n1/commit/a5a57c230e7fb4884c30045ee0fb9372329469a9
+Assisted-By: OpenAI Codex (GPT-6 Astra)
+Signed-off-by: Niklas Sheth <hi@niklassheth.com>
+---
+ drivers/nvme/nvme_apple.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/nvme/nvme_apple.c b/drivers/nvme/nvme_apple.c
+index a83c32674cf..35f76af2952 100644
+--- a/drivers/nvme/nvme_apple.c
++++ b/drivers/nvme/nvme_apple.c
+@@ -311,6 +311,8 @@ static int apple_nvme_remove(struct udevice *dev)
+ 	priv->sart = NULL;
+ 
+ 	reset_assert_bulk(&priv->resets);
++	/* Give the ANS reset time to reach the device before releasing it. */
++	udelay(10);
+ 	reset_deassert_bulk(&priv->resets);
+ 
+ 	return 0;
+-- 
+2.47.3

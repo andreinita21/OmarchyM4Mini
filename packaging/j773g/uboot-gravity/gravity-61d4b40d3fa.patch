@@ -1,0 +1,108 @@
+From 61d4b40d3faaea601a3cf272ec3b258504d4570e Mon Sep 17 00:00:00 2001
+From: Niklas Sheth <hi@niklassheth.com>
+Date: Fri, 18 Sep 2026 15:54:56 -0400
+Subject: [PATCH] nvme: apple: Service RTKit messages while waiting for the
+ controller
+
+On T8132, IOReport startup messages can arrive after the initial RTKit
+boot handshake. Waiting only for CSTS.RDY leaves those messages
+unacknowledged and prevents the NVMe controller from becoming ready.
+
+Add an optional controller polling operation to the readiness and command
+completion loops. Use it in the Apple driver to service RTKit messages
+without blocking, treating an empty mailbox as normal and propagating
+other errors. Controllers without the operation retain their existing
+behavior.
+
+Validated on an M4 Mac mini: the patched diagnostic run initializes NVMe,
+scans its partitions, and reaches the U-Boot main loop.
+
+Assisted-By: OpenAI Codex (GPT-6 Astra)
+Signed-off-by: Niklas Sheth <hi@niklassheth.com>
+---
+ drivers/nvme/nvme.c       | 15 +++++++++++++++
+ drivers/nvme/nvme.h       |  6 ++++++
+ drivers/nvme/nvme_apple.c | 10 ++++++++++
+ 3 files changed, 31 insertions(+)
+
+diff --git a/drivers/nvme/nvme.c b/drivers/nvme/nvme.c
+index b9cfe755cac..a9179f8b325 100644
+--- a/drivers/nvme/nvme.c
++++ b/drivers/nvme/nvme.c
+@@ -44,6 +44,13 @@ static inline void nvme_invalidate_cache_aligned(uintptr_t addr, int length)
+ 	invalidate_dcache_range(start_addr, end_addr);
+ }
+ 
++static int nvme_poll(struct nvme_dev *dev)
++{
++	const struct nvme_ops *ops = dev->udev->driver->ops;
++
++	return ops && ops->poll ? ops->poll(dev) : 0;
++}
++
+ static int nvme_wait_csts(struct nvme_dev *dev, u32 mask, u32 val)
+ {
+ 	int timeout;
+@@ -54,6 +61,10 @@ static int nvme_wait_csts(struct nvme_dev *dev, u32 mask, u32 val)
+ 
+ 	start = get_timer(0);
+ 	while (get_timer(start) < timeout) {
++		int ret = nvme_poll(dev);
++
++		if (ret)
++			return ret;
+ 		if ((readl(&dev->bar->csts) & mask) == val)
+ 			return 0;
+ 	}
+@@ -195,6 +206,10 @@ static int nvme_submit_sync_cmd(struct nvme_queue *nvmeq,
+ 	start_time = timer_get_us();
+ 
+ 	for (;;) {
++		int ret = nvme_poll(nvmeq->dev);
++
++		if (ret)
++			return ret;
+ 		status = nvme_read_completion_status(nvmeq, head);
+ 		if ((status & 0x01) == phase)
+ 			break;
+diff --git a/drivers/nvme/nvme.h b/drivers/nvme/nvme.h
+index 282d8686be9..2c4df515ad0 100644
+--- a/drivers/nvme/nvme.h
++++ b/drivers/nvme/nvme.h
+@@ -665,6 +665,12 @@ struct nvme_ns {
+ };
+ 
+ struct nvme_ops {
++	/**
++	 * poll - Service controller firmware while waiting for hardware.
++	 * @dev: NVM Express controller
++	 * Return: 0 if OK, -ve on error
++	 */
++	int (*poll)(struct nvme_dev *dev);
+ 	/**
+ 	 * setup_queue - Controller-specific NVM Express queue setup.
+ 	 *
+diff --git a/drivers/nvme/nvme_apple.c b/drivers/nvme/nvme_apple.c
+index e25ea126165..a83c32674cf 100644
+--- a/drivers/nvme/nvme_apple.c
++++ b/drivers/nvme/nvme_apple.c
+@@ -316,7 +316,17 @@ static int apple_nvme_remove(struct udevice *dev)
+ 	return 0;
+ }
+ 
++static int apple_nvme_poll(struct nvme_dev *dev)
++{
++	struct apple_nvme_priv *priv =
++		container_of(dev, struct apple_nvme_priv, ndev);
++	int ret = apple_rtkit_poll(priv->rtk, 0);
++
++	return ret == -ETIMEDOUT ? 0 : ret;
++}
++
+ static const struct nvme_ops apple_nvme_ops = {
++	.poll = apple_nvme_poll,
+ 	.setup_queue = apple_nvme_setup_queue,
+ 	.register_queue = apple_nvme_register_queue,
+ 	.submit_cmd = apple_nvme_submit_cmd,
+-- 
+2.47.3
