@@ -19,3 +19,9 @@ CONFIG_PSTORE=y
 CONFIG_PSTORE_RAM=y
 CONFIG_PSTORE_CONSOLE=y
 CONFIG_PSTORE_PMSG=y
+
+# Gravity's display driver calls non-exported arch helpers (can_set_direct_map,
+# dcache_clean_inval_poc): it only links built in, as Gravity ships it.
+CONFIG_DRM_APPLE=y
+CONFIG_DRM_APPLE_AUDIO=y
+CONFIG_BACKLIGHT_CLASS_DEVICE=y

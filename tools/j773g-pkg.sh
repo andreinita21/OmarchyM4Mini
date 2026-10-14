@@ -56,7 +56,11 @@ makepkg_one() {
     # Local source tarballs cached in SRCDEST are picked up by makepkg; the
     # ALARM package databases are refreshed so --syncdeps can run.
     sudo pacman -Sy --noconfirm >/dev/null
-    makepkg --noconfirm --syncdeps --cleanbuild --nocheck
+    # Architecture-independent glue depends on the other J773g packages, which
+    # no repository the container knows carries: skip dependency resolution.
+    deps=--syncdeps
+    grep -q "^arch=('"'"'any'"'"')" PKGBUILD && deps=--nodeps
+    makepkg --noconfirm $deps --cleanbuild --nocheck
     ls -la /pkgdest/ | grep "$pkg" || true
   ' _ "$pkg"
 }
