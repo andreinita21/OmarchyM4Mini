@@ -1,0 +1,35 @@
+--- a/src/cpu_regs.h
++++ b/src/cpu_regs.h
+@@ -809,3 +809,5 @@
+ /* 48kb read only region given to us by iBoot */
+ #define SYS_IMP_APL_CTRR_LOWER_EL1 sys_reg(3, 0, 11, 0, 0)
+ #define SYS_IMP_APL_CTRR_UPPER_EL1 sys_reg(3, 0, 11, 0, 1)
++#define SYS_IMP_APL_CTRR_D_LOWER_EL1 sys_reg(3, 0, 11, 0, 2)
++#define SYS_IMP_APL_CTRR_D_UPPER_EL1 sys_reg(3, 0, 11, 0, 3)
+--- a/src/kboot.c
++++ b/src/kboot.c
+@@ -386,6 +386,24 @@
+         printf("FDT: Reserving CTRR range 0x%lx..0x%lx\n", ctrr_start, ctrr_end);
+         if (fdt_add_mem_rsv(dt, ctrr_start, ctrr_end - ctrr_start))
+             bail("FDT: Could not reserve CTRR range\n");
++
++        // CTRR_D covers the ADT and the TrustCache iBoot places right after it. Secondary CPUs
++        // keep it write-protected, but only the ADT is reserved: Linux hands TrustCache pages to
++        // other CPUs and their first write faults (M4 Air: clear_page faults, M4 mini: reset
++        // loop without nosmp). The upper bound is the start of the last protected 4 KiB page.
++        u64 d_lower = mrs(SYS_IMP_APL_CTRR_D_LOWER_EL1);
++        u64 d_upper = mrs(SYS_IMP_APL_CTRR_D_UPPER_EL1);
++        u64 d_start = ALIGN_DOWN(d_lower, get_page_size());
++        u64 d_end = ALIGN_UP(d_upper + SZ_4K, get_page_size());
++
++        if (!d_lower || d_start < dram_min || d_end <= d_start || d_end > dram_max ||
++            d_end - d_start > SZ_32M) {
++            printf("FDT: Ignoring CTRR_D range 0x%lx..0x%lx\n", d_lower, d_upper);
++        } else {
++            printf("FDT: Reserving CTRR_D range 0x%lx..0x%lx\n", d_start, d_end);
++            if (fdt_add_mem_rsv(dt, d_start, d_end - d_start))
++                bail("FDT: Could not reserve CTRR_D range\n");
++        }
+     }
+ 
+     printf("FDT: DRAM at 0x%lx size 0x%lx\n", dram_base, dram_size);

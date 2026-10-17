@@ -8,8 +8,8 @@
 
 pkgname=m1n1-gravity
 pkgver=1.6.1.gravity20261013
-pkgrel=3
-pkgdesc='GravityLinux m1n1 (T8132 / M4 Mac mini support), NO_DISPLAY as Gravity ships it, bounded dockchannel console'
+pkgrel=4
+pkgdesc='GravityLinux m1n1 (T8132 / M4 Mac mini support), NO_DISPLAY as Gravity ships it, bounded dockchannel console, CTRR_D reservation'
 _commit=7243b815c4d78f39047172b866dc6518d5cab11d
 _artwork_commit=e613a87e526f8fec439c4129e69dd2821b38d258   # the fork's artwork submodule
 arch=('aarch64')
@@ -27,15 +27,21 @@ source=(
   # M4 Air stuck on the m1n1 logo). Every wait is bounded; the HDMI framebuffer
   # and the USB proxy are untouched. Same console path on the mini.
   dockchannel-tx-bound.patch
+  # Also reserve the CTRR_D range (ADT + TrustCache). Secondary CPUs keep it
+  # write-protected; without the reservation the mini only boots with nosmp
+  # (docs/j713-smp-trustcache.md has the M4 Air evidence).
+  ctrr-d-reserve.patch
 )
 sha256sums=('e945205632f2676d35071b4173dde08cd01e294f4c6618af65a064a38db51caa'
             '58bf5f963f8506819732da12bb012f27e06bffae2a75f1eb3173378d05534fc8'
-            '8a9cf9f7db71212d23718cea09ccfe0abdd50bbdbd3b4180eaf575d388c30311')
+            '8a9cf9f7db71212d23718cea09ccfe0abdd50bbdbd3b4180eaf575d388c30311'
+            '5b5f8184cf87bce1777c52baa54eeb8902d3828f62b101328826469aed5527be')
 
 prepare() {
   rm -rf "bootloader-${_commit}/artwork"
   cp -r "artwork-${_artwork_commit}" "bootloader-${_commit}/artwork"
   patch -d "bootloader-${_commit}" -p1 < dockchannel-tx-bound.patch
+  patch -d "bootloader-${_commit}" -p1 < ctrr-d-reserve.patch
   rustup target add aarch64-unknown-none-softfloat
 }
 

@@ -236,6 +236,8 @@ cmd_m1n1() {
     # (upstream test-issue82-dockchannel-1), so a stuck console cannot hang
     # stage 2 before the HDMI framebuffer shows anything.
     patch -d "$M" -p1 < /repo/packaging/j773g/m1n1-gravity/dockchannel-tx-bound.patch
+    # And the CTRR_D (ADT + TrustCache) reservation, so SMP works without nosmp.
+    patch -d "$M" -p1 < /repo/packaging/j773g/m1n1-gravity/ctrr-d-reserve.patch
   fi
   # Gravity builds both stages with NO_DISPLAY=1 on the M4 mini (packages'
   # m1n1-no-display.patch, installer's build.sh): m1n1's own DCP bring-up
