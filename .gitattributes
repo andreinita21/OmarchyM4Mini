@@ -21,3 +21,7 @@ audio/j713/speakersafetyd/vendor/alsa/src/card.rs whitespace=-blank-at-eol
 audio/j713/speakersafetyd/vendor/alsa/src/poll.rs whitespace=-blank-at-eol
 audio/j713/speakersafetyd/vendor/alsa/README.md whitespace=-blank-at-eol,-blank-at-eof
 packaging/j773g/linux-gravity-m4/j773g-headphones.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches-kernel/j773g-usbc-dp/0001-tipd-hpd.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches-kernel/j773g-usbc-dp/0002-tipd-dp-hpd-oob-hotplug.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches-kernel/j773g-usbc-dp/0003-apple-dcp-usbc-link.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches-kernel/j773g-usbc-dp/0010-atc-t8122-dp-experimental.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab

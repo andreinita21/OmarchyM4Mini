@@ -1,0 +1,176 @@
+Subject: [PATCH 2/3] usb: typec: tipd: forward DP alt-mode HPD to the display controller
+
+A Type-C connector node may name its display controller with a
+"displayport" phandle. tipd looks it up when the port is registered and
+reports the debounced DP HPD to that controller's DRM connector with
+drm_connector_oob_hotplug_event():
+
+ - HPD low, or an HPD toggle since the last run: connector_status_disconnected,
+   sent before the mux leaves DP mode;
+ - HPD high (only while DP alt-mode is active): connector_status_connected,
+   sent after typec_mux_set() put the PHY in DP mode.
+
+apple-drm matches the phandle against the DCP node it sets as the
+connector's fwnode. DP alt-mode transitions (DP on/off, pin assignment,
+HPD level, IRQ_HPD) on such ports are logged with dev_info. The fwnode
+reference is dropped (after a final disconnect) when the port goes away.
+TYPEC_TPS6598X and TYPEC_SN201202X now depend on DRM || !DRM, since the
+core module calls into DRM.
+
+Port of Asahi Linux fairydust 9c16792154f8 ("usb: typec: tipd: HACK: Use
+drm oob hotplug event", Janne Grunau), with logging, the reference put and
+the Kconfig dependency added. Like the original this is a stop-gap, not the
+typec DP altmode driver path. Needs patch 3 so the DRM side never blocks
+this work (it runs with tps->lock held).
+
+---
+--- a/drivers/usb/typec/tipd/Kconfig
++++ b/drivers/usb/typec/tipd/Kconfig
+@@ -6,6 +6,7 @@ config TYPEC_TPS6598X
+ config TYPEC_TPS6598X
+ 	tristate "TI TPS6598x USB Power Delivery controller driver"
+ 	depends on I2C
++	depends on DRM || !DRM
+ 	select REGMAP_I2C
+ 	select TYPEC_TPS6598X_CORE
+ 	help
+@@ -18,6 +19,7 @@ config TYPEC_SN201202X
+ config TYPEC_SN201202X
+ 	tristate "TI SN201202x USB Power Delivery controller support"
+ 	depends on SPMI
++	depends on DRM || !DRM
+ 	select TYPEC_TPS6598X_CORE
+ 	help
+ 	  Say Y here to enable support for SN201202x, a TPS6598x variant
+--- a/drivers/usb/typec/tipd/core.c
++++ b/drivers/usb/typec/tipd/core.c
+@@ -5,6 +5,8 @@
+  * Copyright (C) 2017, Intel Corporation
+  * Author: Heikki Krogerus <heikki.krogerus@linux.intel.com>
+  */
++
++#include <drm/drm_connector.h>
+ 
+ #include <linux/i2c.h>
+ #include <linux/acpi.h>
+@@ -630,6 +632,33 @@ static void cd321x_typec_update_mode(struct tps6598x *
+ 
+ 	/* Clear data since it's no longer used after typec_mux_set and points to the stack */
+ 	cd321x->state.data = NULL;
++}
++
++/*
++ * Log DisplayPort alt-mode transitions (DP connection, pin assignment, HPD
++ * level and IRQ_HPD) on ports wired to a display controller, so a plug test
++ * shows in dmesg what the PD controller reported without the trace events.
++ */
++static void cd321x_log_dp_status(struct cd321x *cd321x, const struct cd321x_status *st)
++{
++	/* Indexed by TPS_DATA_STATUS_DP_SPEC_PIN_ASSIGNMENT() */
++	static const char pin_names[] = "EFCDA?B?";
++	u32 changed = st->data_status_changed;
++	u32 ds = st->data_status;
++
++	if (!cd321x->connector_fwnode)
++		return;
++	if (!(changed & (TPS_DATA_STATUS_DP_CONNECTION | CD321X_DATA_STATUS_HPD_LEVEL |
++			 CD321X_DATA_STATUS_HPD_IRQ)))
++		return;
++
++	dev_info(cd321x->tps.dev,
++		 "DP alt-mode: %s, pin assignment %c, HPD %s%s (data status 0x%08x)\n",
++		 ds & TPS_DATA_STATUS_DP_CONNECTION ? "on" : "off",
++		 ds & TPS_DATA_STATUS_DP_CONNECTION ?
++			pin_names[TPS_DATA_STATUS_DP_SPEC_PIN_ASSIGNMENT(ds) & 7] : '-',
++		 ds & CD321X_DATA_STATUS_HPD_LEVEL ? "high" : "low",
++		 ds & CD321X_DATA_STATUS_HPD_IRQ ? ", IRQ_HPD" : "", ds);
+ }
+ 
+ static void cd321x_update_work(struct work_struct *work)
+@@ -652,6 +681,11 @@ static void cd321x_update_work(struct work_struct *wor
+ 	bool usb_connection = st.data_status &
+ 			      (TPS_DATA_STATUS_USB2_CONNECTION | TPS_DATA_STATUS_USB3_CONNECTION);
+ 
++	/* HPD is only meaningful while the port is in DP alt-mode */
++	bool dp_hpd = (st.data_status & TPS_DATA_STATUS_DP_CONNECTION) &&
++		      (st.data_status & CD321X_DATA_STATUS_HPD_LEVEL);
++	bool dp_hpd_changed = st.data_status_changed & CD321X_DATA_STATUS_HPD_LEVEL;
++
+ 	enum usb_role old_role = usb_role_switch_get_role(tps->role_sw);
+ 	enum usb_role new_role = USB_ROLE_NONE;
+ 	enum typec_pwr_opmode pwr_opmode = TYPEC_PWR_MODE_USB;
+@@ -680,6 +714,17 @@ static void cd321x_update_work(struct work_struct *wor
+ 	if (old_role != USB_ROLE_NONE && (new_role != old_role || was_disconnected))
+ 		usb_role_switch_set_role(tps->role_sw, USB_ROLE_NONE);
+ 
++	cd321x_log_dp_status(cd321x, &st);
++
++	/*
++	 * HPD low, or HPD toggled since the last run (unplug/replug inside
++	 * the debounce window): tell the display controller first, before
++	 * the mux leaves DP mode below.
++	 */
++	if (cd321x->connector_fwnode && (!dp_hpd || dp_hpd_changed))
++		drm_connector_oob_hotplug_event(cd321x->connector_fwnode,
++						connector_status_disconnected);
++
+ 	/* Process partner disconnection or change */
+ 	if (!new_connected || partner_changed) {
+ 		if (!IS_ERR(tps->partner))
+@@ -735,6 +780,11 @@ static void cd321x_update_work(struct work_struct *wor
+ 
+ 	/* Launch the USB role switch */
+ 	usb_role_switch_set_role(tps->role_sw, new_role);
++
++	/* The mux is in DP mode now: hand HPD high to the display controller. */
++	if (cd321x->connector_fwnode && dp_hpd)
++		drm_connector_oob_hotplug_event(cd321x->connector_fwnode,
++						connector_status_connected);
+ 
+ 	power_supply_changed(tps->psy);
+ }
+@@ -1189,6 +1239,19 @@ cd321x_register_port(struct tps6598x *tps, struct fwno
+ 		ret = PTR_ERR(cd321x->mux);
+ 		goto err_unregister_altmodes;
+ 	}
++
++	/*
++	 * Optional "displayport" phandle on the connector node: the display
++	 * controller whose DRM connector gets this port's DP HPD through
++	 * drm_connector_oob_hotplug_event(). apple-drm matches it against
++	 * the DCP node it set as the connector's fwnode.
++	 */
++	cd321x->connector_fwnode = fwnode_find_reference(fwnode, "displayport", 0);
++	if (IS_ERR(cd321x->connector_fwnode))
++		cd321x->connector_fwnode = NULL;
++	else
++		dev_info(tps->dev, "DP alt-mode HPD goes to %pfw\n",
++			 cd321x->connector_fwnode);
+ 
+ 	cd321x->state.alt = NULL;
+ 	cd321x->state.mode = TYPEC_STATE_SAFE;
+@@ -1218,6 +1281,12 @@ cd321x_unregister_port(struct tps6598x *tps)
+ {
+ 	struct cd321x *cd321x = container_of(tps, struct cd321x, tps);
+ 
++	if (cd321x->connector_fwnode) {
++		drm_connector_oob_hotplug_event(cd321x->connector_fwnode,
++						connector_status_disconnected);
++		fwnode_handle_put(cd321x->connector_fwnode);
++		cd321x->connector_fwnode = NULL;
++	}
+ 	typec_mux_put(cd321x->mux);
+ 	cd321x->mux = NULL;
+ 	typec_unregister_altmode(cd321x->port_altmode_dp);
+--- a/drivers/usb/typec/tipd/tps6598x.h
++++ b/drivers/usb/typec/tipd/tps6598x.h
+@@ -373,6 +373,9 @@ struct cd321x {
+ 	struct cd321x_status update_status;
+ 	struct delayed_work update_work;
+ 	struct usb_pd_identity cur_partner_identity;
++
++	/* DRM connector (display controller node) for DP alt-mode HPD */
++	struct fwnode_handle *connector_fwnode;
+ };
+ 
+ struct sn201202x {
