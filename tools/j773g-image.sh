@@ -9,7 +9,8 @@
 #   tools/j773g-image.sh [--keep-going]        build
 #   tools/j773g-image.sh shell                  root shell in the privileged container
 #
-# J773G_CMDLINE="nosmp idle=nop" adds kernel options (the ladder's findings).
+# J773G_CMDLINE adds kernel options; unset, it is the J773g's SMP line
+# "idle=nop nohlt arm64.nowfxt efi=noruntime" (set it empty for none).
 # Nothing here touches the mini's disk; the image is a file.
 set -euo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -23,7 +24,7 @@ TTY=(); [[ -t 0 && -t 1 ]] && TTY=(-it)
 run() {
   docker run --rm ${TTY[@]+"${TTY[@]}"} --platform linux/arm64 --privileged \
     -e BUILDER_COMMIT="$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)" \
-    -e J773G_CMDLINE="${J773G_CMDLINE:-}" \
+    -e J773G_CMDLINE="${J773G_CMDLINE-idle=nop nohlt arm64.nowfxt efi=noruntime}" \
     -v "$REPO/tools/j773g:/tools:ro" -v "$PKGS:/pkgdest:ro" -v "$CACHE:/cache" -v "$OUT:/out" \
     --user root "$IMAGE" "$@"
 }

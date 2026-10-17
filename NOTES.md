@@ -641,3 +641,39 @@ failed boot iBoot falls back to macOS, from where the ESP (disk0s4,
   G16 as G14). Path: package GravityLinux/mesa main @ 87ac51d411
   (ES 3.0, ASAHI_MESA_DEBUG=nocompress) under /opt first, Hyprland env only.
 - speakersafetyd fails at every boot (start-limit-hit); not touched.
+- Multicore: FIXED (2026-10-17 ~21:15), all ten cores on the installed boot
+  path. Kernel line: `idle=nop nohlt arm64.nowfxt efi=noruntime`, no
+  `splash`. How it was found (proxy RAM boots, tools/j773g/trustcache.py,
+  netlog initramfs with tg3 from an overlay cpio, build/j773g/smp/):
+  - CTRR_D (s3_0_c11_c0_2/3) reads 0 on every core of the mini; the Air's
+    TrustCache reservation does not apply. TrustCache does sit between ADT
+    and BootKC-rw and moves every boot. The failed m1n1 pkgrel 4 would only
+    have printed "Ignoring CTRR_D"; its reset loop has another cause
+    (suspect: rustup pulled a newer toolchain for that build; unverified).
+  - SMP + idle=nop: hard hang before userspace, even maxcpus=2, no panic
+    path (SOFTLOCKUP/HARDLOCKUP detectors are not built). nosmp boots.
+  - idle=nop nohlt arm64.nowfxt (GravityLinux kiwi-descriptions
+    workstation.xml, upstream m1n1 3a69c73/9095a5e): 10 CPUs over the proxy,
+    Omarchy up, 60 s 10-core load + 4 GB tmpfs churn, no oops. The Gravity
+    kernel's __delay still uses wfit; our Air kernel had it patched out.
+  - Through U-Boot -> Limine -> UKI the same line hung again: efi=noruntime
+    fixes it (U-Boot's EFI runtime services with secondaries up), and
+    Plymouth's `splash` hangs it too (verbose and `quiet` without splash
+    boot; the same initramfs and splash boot fine over the proxy).
+  - Limine passes each entry's cmdline to the UKI (Secure Boot off), so
+    test entries work; the menu is invisible (NO_DISPLAY: HDMI lights only
+    with the kernel), so a test entry is selected by default_entry for one
+    boot and /etc/systemd/system/j773g-limine-default-reset.service (on the
+    mini, not in the image) sets default_entry back to 2 after every
+    successful boot. A hung test needs macOS (startup options) to edit
+    /Volumes/EFI/limine.conf.
+  - Do not run limine-update on a proxy-booted system: without EFI it drops
+    the UKI and writes a `protocol: linux` entry.
+  - Restart from Linux works with the PMU cells (busybox reboot -f and
+    systemctl reboot both come back).
+  - The mini's /etc/default/grub is the source of the cmdline
+    (omarchy-mac-limine-cmdline derives KERNEL_CMDLINE on limine-update).
+    Backups in /root/j773g-backup/.
+- Security: UFW logs SYNs from public addresses to 5900 on .95, so the
+  router (192.168.100.1) forwards to the mini (DMZ or port forward); SSH has
+  password login on both Linux and macOS. Andrei will check the router.

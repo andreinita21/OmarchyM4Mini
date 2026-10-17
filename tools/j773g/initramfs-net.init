@@ -12,6 +12,9 @@ mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev 2>/dev/null
 mount -t tmpfs tmpfs /tmp
 mkdir -p /dev/pts && mount -t devpts devpts /dev/pts 2>/dev/null   # telnetd needs a pty
+# Kernels with the NIC as a module (the packaged linux-gravity-m4: TIGON3=m):
+# an overlay cpio adds the .ko files and lists them, dependencies first.
+[ -f /etc/j773g-modules ] && for m in $(cat /etc/j773g-modules); do insmod "/lib/modules/$m" || echo "insmod $m failed"; done
 HOST=192.168.100.173
 for w in $(cat /proc/cmdline); do case $w in j773g_host=*) HOST=${w#j773g_host=};; esac; done
 probes() {

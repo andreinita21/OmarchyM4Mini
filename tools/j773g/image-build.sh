@@ -330,6 +330,10 @@ finalize_root() {
   if [[ -n ${J773G_CMDLINE:-} ]]; then
     sed -i "s|^GRUB_CMDLINE_LINUX=\"\(.*\)\"|GRUB_CMDLINE_LINUX=\"\1 $J773G_CMDLINE\"|" "$target/etc/default/grub"
   fi
+  # No Plymouth splash on the J773g: with all ten cores up, "splash" hangs
+  # the boot through U-Boot/Limine before the root is mounted (2026-10-17;
+  # the same line without it boots). quiet and the rest stay.
+  sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/s/ *\bsplash\b//' "$target/etc/default/grub"
 }
 
 prepare_target_keyring() {
@@ -429,11 +433,15 @@ EOF
   # The UKI's command line is KERNEL_CMDLINE[default] in /etc/default/limine
   # (Omarchy derives it from /etc/default/grub at install time, before
   # finalize_root adds J773G_CMDLINE). Put the hardware options there too, so
-  # the UKI built below and every later rebuild carry them. On the J773g the
-  # kernel boots black without "nosmp idle=nop" (2026-10-17: proxy boot of the
-  # installed system with and without them).
+  # the UKI built below and every later rebuild carry them. The J773g needs
+  # "idle=nop nohlt arm64.nowfxt" (M4 cores lose state in WFI/WFIT; Gravity
+  # and upstream m1n1 use the same) and efi=noruntime (U-Boot's EFI runtime
+  # services hang the boot once the secondary cores are up), all 2026-10-17.
   if [[ -n ${J773G_CMDLINE:-} && -f $target/etc/default/limine ]]; then
     sed -i "s|^\(KERNEL_CMDLINE\[default\]=\"\)|\1$J773G_CMDLINE |" "$target/etc/default/limine"
+  fi
+  if [[ -f $target/etc/default/limine ]]; then
+    sed -i '/^KERNEL_CMDLINE\[default\]=/s/ *\bsplash\b//' "$target/etc/default/limine"
     grep '^KERNEL_CMDLINE\[default\]' "$target/etc/default/limine" >>"$logs/build.log"
   fi
   say "mkinitcpio -P, update-m1n1 (LC_ALL=C), Limine activation"

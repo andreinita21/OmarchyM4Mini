@@ -95,12 +95,24 @@ stay), `omarchy/install.conf` is written from the recorded `ENCRYPT`
 then `boot.bin.omarchy` becomes `m1n1/boot.bin`. Root grows to the partition
 on first boot (`x-systemd.growfs` in fstab).
 
-The image's kernel command line carries `nosmp idle=nop`
-(`J773G_CMDLINE` at image build, written into `KERNEL_CMDLINE[default]` of
-`/etc/default/limine` before the UKI is built): without them the J773g boots
-black and resets in a loop until iBoot shows "The version of macOS on the
-selected disk needs to be reinstalled" for the stub (pick the Linux volume
-in the startup picker to boot it again).
+The image's kernel command line carries `idle=nop nohlt arm64.nowfxt
+efi=noruntime` (`J773G_CMDLINE` at image build, written into
+`GRUB_CMDLINE_LINUX` and `KERNEL_CMDLINE[default]` of `/etc/default/limine`
+before the UKI is built) and no `splash`. That boots all ten cores:
+
+- `idle=nop nohlt arm64.nowfxt`: M4 cores lose state in WFI and WFIT. Without
+  them the kernel hangs as soon as a second core starts (even `maxcpus=2`).
+  Gravity's images and upstream m1n1 use the same options.
+- `efi=noruntime`: with the secondary cores up, U-Boot's EFI runtime services
+  hang the boot through U-Boot and Limine (the proxy boot, which has no EFI,
+  does not need it). The SMC RTC keeps the time.
+- no `splash`: Plymouth's splash hangs the SMP boot through U-Boot and Limine
+  before the root is mounted; `quiet` alone boots.
+
+Earlier images used `nosmp idle=nop` (one core). A hung boot ends in iBoot's
+"The version of macOS on the selected disk needs to be reinstalled" after a
+few tries; hold the power button for the startup options and pick the Linux
+volume or macOS.
 
 **Re-installing** (for example after an interrupted part 3): boot the g6
 shell again, run part 3 again. It rewrites root, Boot and the ESP's boot

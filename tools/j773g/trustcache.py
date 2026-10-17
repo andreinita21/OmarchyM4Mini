@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MIT
 """Live TrustCache reservation for the M4 Mac mini (J773g) over the m1n1 proxy.
 
-  trustcache.py probe --proxyclient DIR
+  trustcache.py --proxyclient DIR probe
       Read-only: CTRR (A) and CTRR_D bounds, the ADT /chosen/memory-map
       DeviceTree / TrustCache / BootKC-rw entries and RAM bounds.
-  trustcache.py boot --proxyclient DIR --output-dtb NEW.dtb -- <linux.py args>
+  trustcache.py --proxyclient DIR --output-dtb NEW.dtb boot -- <linux.py args>
       Run proxyclient tools/linux.py with the TrustCache range added to the
       DTB as a /memreserve/ entry for this boot only (tools/air_trustcache.py's
       method, for J773g; the CTRR_D-in-m1n1 patch reset-looped, NOTES.md).

@@ -69,14 +69,22 @@ if [ "$got" = "$ROOT_UUID" ]; then echo "--- root $ROOT_DEV: Omarchy btrfs $got 
 # rebuilt on kernel updates): make sure it carries the J773g hardware options.
 mkdir -p /mnt/root
 if mount -t btrfs -o subvol=@ "$ROOT_DEV" /mnt/root 2>/dev/null; then
-  for f in /mnt/root/etc/default/limine; do
-    if [ -f "$f" ] && ! grep -q 'KERNEL_CMDLINE\[default\]="nosmp idle=nop' "$f"; then
-      sed -i 's|^\(KERNEL_CMDLINE\[default\]="\)|\1nosmp idle=nop |' "$f"
-    fi
-    grep '^KERNEL_CMDLINE' "$f" 2>/dev/null | cut -c1-80
+  # SMP line (idle=nop nohlt arm64.nowfxt efi=noruntime) instead of the old
+  # single-core "nosmp idle=nop", and no Plymouth splash (it hangs the SMP
+  # boot); docs/j773g-install.md.
+  opts='idle=nop nohlt arm64.nowfxt efi=noruntime'
+  for f in /mnt/root/etc/default/limine /mnt/root/etc/default/grub; do
+    [ -f "$f" ] || continue
+    sed -i 's/nosmp idle=nop *//; /^KERNEL_CMDLINE\[default\]=/s/ splash / /; /^GRUB_CMDLINE_LINUX_DEFAULT=/s/ splash / /; /^GRUB_CMDLINE_LINUX_DEFAULT=/s/"splash /"/' "$f"
   done
-  if [ -f /mnt/root/etc/default/grub ] && ! grep -q '^GRUB_CMDLINE_LINUX=".*nosmp' /mnt/root/etc/default/grub; then
-    sed -i 's|^GRUB_CMDLINE_LINUX="|GRUB_CMDLINE_LINUX="nosmp idle=nop |' /mnt/root/etc/default/grub
+  f=/mnt/root/etc/default/limine
+  if [ -f "$f" ] && ! grep -q "^KERNEL_CMDLINE\[default\]=.*$opts" "$f"; then
+    sed -i "s|^\(KERNEL_CMDLINE\[default\]=\"\)|\1$opts |" "$f"
+  fi
+  grep '^KERNEL_CMDLINE' "$f" 2>/dev/null | cut -c1-120
+  f=/mnt/root/etc/default/grub
+  if [ -f "$f" ] && ! grep -q "^GRUB_CMDLINE_LINUX=\".*$opts" "$f"; then
+    sed -i "s|^GRUB_CMDLINE_LINUX=\"|GRUB_CMDLINE_LINUX=\"$opts |" "$f"
   fi
   sync; umount /mnt/root
 else
