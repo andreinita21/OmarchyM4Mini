@@ -46,22 +46,36 @@ mac_check() {
   whole_of_root=$(diskutil info / | awk -F': *' '/Part of Whole/ { print $2 }')
   [[ $dev != "$whole_of_root" ]] || die "$dev holds macOS (the mini's internal disk). Refusing."
   grep -qE '^ *Whole: +Yes' <<<"$info" || die "$dev is not a whole disk"
-  grep -qE '^ *Internal: +No' <<<"$info" || die "$dev is an internal disk. Refusing."
+  # macOS 27 dropped the "Internal:" line; "Device Location" is the check there.
+  grep -qE '^ *Internal: +Yes' <<<"$info" && die "$dev is an internal disk. Refusing."
   grep -qE '^ *Protocol: +USB' <<<"$info" || die "$dev is not on USB (protocol: $(awk -F': *' '/Protocol/ { print $2 }' <<<"$info")). Refusing."
   grep -qE '^ *Device Location: +External' <<<"$info" || die "$dev is not an external device. Refusing."
+  [[ " $(mac_repo_disks | tr '\n' ' ') " != *" $dev "* ]] || die "$dev holds this repository and the disk image (an external SSD used for development). Refusing."
   diskutil list "$dev"
   echo "/dev/r$dev"
 }
 
+# The whole disk(s) behind the volume that holds this checkout: the volume's
+# own whole device and, for APFS, the physical store under the container.
+mac_repo_disks() {
+  local whole
+  whole=$(diskutil info "$(df -P "$REPO" | awk 'NR == 2 { print $1 }')" 2>/dev/null | awk -F': *' '/Part of Whole/ { print $2 }')
+  [[ -n $whole ]] || return 0
+  echo "$whole"
+  diskutil info "$whole" 2>/dev/null | awk -F': *' '/APFS Physical Store/ { print $2 }' | sed -E 's/s[0-9]+$//'
+}
+
 # Linux: whole disk on the usb transport, nothing mounted from it, not root's disk.
 linux_check() {
-  local dev=$1 tran type root_disk
+  local dev=$1 tran type root_disk repo_disk
   [[ -b $dev ]] || die "$dev is not a block device"
   type=$(lsblk -dno TYPE "$dev"); tran=$(lsblk -dno TRAN "$dev")
   [[ $type == disk ]] || die "$dev is a $type, not a whole disk"
   [[ $tran == usb ]] || die "$dev transport is '${tran:-?}', not usb. Refusing."
   root_disk=$(lsblk -no PKNAME "$(findmnt -no SOURCE /)" 2>/dev/null || true)
   [[ -n $root_disk && /dev/$root_disk == "$dev" ]] && die "$dev holds the running system. Refusing."
+  repo_disk=$(lsblk -no PKNAME "$(findmnt -T "$REPO" -no SOURCE)" 2>/dev/null || true)
+  [[ -n $repo_disk && /dev/$repo_disk == "$dev" ]] && die "$dev holds this repository and the disk image. Refusing."
   lsblk -no MOUNTPOINTS "$dev" | grep -q . && die "something from $dev is mounted; unmount it first"
   lsblk "$dev"
   echo "$dev"

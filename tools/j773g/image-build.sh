@@ -408,6 +408,34 @@ stage_owner_provisioning() {
 }
 
 build_boot() {
+  # No GPU yet: the kernel's asahi_m4 driver binds the M4 GPU, but Mesa has no
+  # working userspace for it, so Hyprland rendered through its render node and
+  # every DRM_IOCTL_ASAHI_SUBMIT failed: a black greeter on a lit, connected
+  # HDMI (2026-10-17). Keep the module out until rung g8-gpu passes; Mesa then
+  # falls back to llvmpipe on the display controller's card.
+  install -d "$target/etc/modprobe.d"
+  cat >"$target/etc/modprobe.d/90-j773g-no-gpu.conf" <<'EOF'
+# J773g: the M4 GPU driver (asahi_m4) loads but Mesa has no working userspace
+# for it yet: every DRM_IOCTL_ASAHI_SUBMIT fails and Hyprland draws nothing
+# (black greeter, 2026-10-17). Keep the GPU away until rung g8-gpu passes;
+# rendering falls back to llvmpipe on the display controller.
+blacklist asahi_m4
+install asahi_m4 /bin/false
+EOF
+  # Debugging a Mac with no console is blind without a journal that survives
+  # the reboot, and the ladder's SSH access needs the firewall open.
+  install -d "$target/etc/systemd/journald.conf.d"
+  printf '[Journal]\nStorage=persistent\n' >"$target/etc/systemd/journald.conf.d/90-j773g-persistent.conf"
+  # The UKI's command line is KERNEL_CMDLINE[default] in /etc/default/limine
+  # (Omarchy derives it from /etc/default/grub at install time, before
+  # finalize_root adds J773G_CMDLINE). Put the hardware options there too, so
+  # the UKI built below and every later rebuild carry them. On the J773g the
+  # kernel boots black without "nosmp idle=nop" (2026-10-17: proxy boot of the
+  # installed system with and without them).
+  if [[ -n ${J773G_CMDLINE:-} && -f $target/etc/default/limine ]]; then
+    sed -i "s|^\(KERNEL_CMDLINE\[default\]=\"\)|\1$J773G_CMDLINE |" "$target/etc/default/limine"
+    grep '^KERNEL_CMDLINE\[default\]' "$target/etc/default/limine" >>"$logs/build.log"
+  fi
   say "mkinitcpio -P, update-m1n1 (LC_ALL=C), Limine activation"
   mount_api
   in_target mkinitcpio -P >"$logs/mkinitcpio.log" 2>&1 || fail "mkinitcpio (logs/mkinitcpio.log)"
@@ -474,6 +502,13 @@ seal_images() {
   mcopy -i "$work/esp-build.img" -s -p -Q ::/ "$out/esp/" >>"$logs/build.log" 2>&1 || {
     mount -o loop,ro "$work/esp-build.img" "$top" && cp -a "$top"/. "$out/esp/" && umount "$top"; }
   rm -f "$out/esp/.builder" "$out/esp/m1n1/boot.bin.old"
+  # What Omarchy's Mac installer app writes for the first boot to consume
+  # (omarchy-mac-first-boot: a missing install.conf means "encrypt", and the
+  # owner provisioning then refuses an unencrypted root). The lab image is
+  # not encrypted: say so. First boot moves this into
+  # /var/lib/omarchy/mac-first-boot/install.conf and deletes the ESP copy.
+  install -d "$out/esp/omarchy"
+  printf 'format=1\nencrypt=0\n' >"$out/esp/omarchy/install.conf"
   mv -f "$work/root-build.img" "$out/root.img"
   mv -f "$work/boot-build.img" "$out/boot.img"
   rm -f "$work/esp-build.img"

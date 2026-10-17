@@ -20,7 +20,7 @@ running log [NOTES.md](../NOTES.md).
   (Restore wipes the disk).
 - Time Machine or other backup of anything on the mini that matters.
 
-## 1. Pick the host
+## 1. Pick the host (2026-10-17: the MacBook Pro, with the repo and kit on the external SSD)
 
 Once the mini boots m1n1, macOS is not running, so another machine drives
 the loop over USB-C. Any Mac or Linux box with Python 3 and a USB-C port.
@@ -47,7 +47,7 @@ only to your own host, never publish it.
 Or rebuild it on the host if it is arm64 with Docker: `tools/j773g-build.sh all`
 (Gravity base by default; `BASE=asahi tools/j773g-build.sh all` for the legacy tree).
 
-## 2. Get m1n1 onto the mini — APPROVAL
+## 2. Get m1n1 onto the mini — APPROVAL (done 2026-10-17: Gravity Linux alpha installed via route A and booted)
 
 The mini needs a stub (a small extra macOS boot volume set to Permissive
 Security) whose boot object is m1n1. macOS stays on its own volume, untouched
@@ -160,6 +160,13 @@ If a rung is black:
 - Commit NOTES.md and any DT fixes; raw logs and ADT dumps stay in private/.
 
 ## After the ladder: Phase 3 (Omarchy)
+
+**2026-10-17: no USB drive.** Gravity is disposable, so Omarchy replaces it in
+place with [j773g-install.md](j773g-install.md): `tools/j773g-install.sh serve`
+on the MacBook, `prepare` inside Gravity (ESP + Boot, leaves the mini in proxy
+mode), the ladder boots `stock` and `g6-display`, then `install-root.sh` from
+the RAM shell writes the root. The USB route below stays as documentation.
+
 
 Once `g6-display` passes, the next hardware rung is `u0` from
 [j773g-phase3-plan.md](j773g-phase3-plan.md) §5: the Omarchy image

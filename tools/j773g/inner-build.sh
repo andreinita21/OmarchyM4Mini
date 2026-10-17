@@ -237,8 +237,16 @@ cmd_m1n1() {
     # stage 2 before the HDMI framebuffer shows anything.
     patch -d "$M" -p1 < /repo/packaging/j773g/m1n1-gravity/dockchannel-tx-bound.patch
   fi
+  # Gravity builds both stages with NO_DISPLAY=1 on the M4 mini (packages'
+  # m1n1-no-display.patch, installer's build.sh): m1n1's own DCP bring-up
+  # crashes the T8132 display coprocessor ("AFK: ring buffer size mismatch",
+  # IOP crashed) and leaves HDMI dead for the kernel. The boot framebuffer
+  # (a 640x1136 dummy when iBoot found no display) is left in place; the
+  # kernel's DCP driver lights HDMI. Seen on the mini 2026-10-17.
+  local extra=()
+  [[ $M1N1_FLAVOUR == gravity ]] && extra=(NO_DISPLAY=1)
   make -C "$M" -s clean
-  make -C "$M" -s -j"$JOBS" RELEASE=1
+  make -C "$M" -s -j"$JOBS" RELEASE=1 "${extra[@]}"
   mkdir -p "$O"
   cp "$M/build/m1n1.bin" "$O/"
   cp "$M/build/m1n1.macho" "$O/" 2>/dev/null || true

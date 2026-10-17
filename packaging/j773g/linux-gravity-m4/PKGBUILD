@@ -8,7 +8,7 @@
 
 _gravityver=7.1.13
 _gravityrel=1
-pkgrel=3
+pkgrel=4
 
 # GravityLinux/linux branch gravity-m4, hardware-tested on J773g (PLAN.md §3).
 _commit=4fc326f6c25ccceb7515e2635c22e01fde5d3bac

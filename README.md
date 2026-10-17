@@ -31,7 +31,7 @@ Basecamp, Asahi Linux, Gravity Linux, Apple, or Kb2uka.
 | Boot ladder on GravityLinux's hardware-tested J773g tree, offline-validated (dtc + dt-schema) | done — [dts/](dts/) |
 | Containerised kernel (GravityLinux gravity-m4) / DTB / initramfs / m1n1 build | done — [tools/j773g-build.sh](tools/j773g-build.sh) |
 | Research: ports, front hub, PCIe power, Wi-Fi chip, stub install | done — [docs/j773g-research.md](docs/j773g-research.md) |
-| m1n1 stub on the mini, live ADT dump through m1n1 | not started (needs a second machine and the owner's go-ahead) |
+| m1n1 stub on the mini (Gravity Linux alpha installed and booted, 2026-10-17) | done; live ADT dump through m1n1 proxy: next |
 | First RAM-only boot to a busybox shell on HDMI | not started |
 | Phase 3: Omarchy on the mini, on Omarchy's official Apple Silicon platform with Gravity-based kernel/m1n1/U-Boot packages | planned — [docs/j773g-phase3-plan.md](docs/j773g-phase3-plan.md) |
 
@@ -50,6 +50,7 @@ The running log is [NOTES.md](NOTES.md); the next hardware session follows
 | [tools/j773g-build.sh](tools/j773g-build.sh), [tools/j773g/](tools/j773g/) | Docker build: GravityLinux `gravity-m4` kernel, ladder DTBs, busybox initramfs, m1n1 |
 | [tools/j773g-boot.sh](tools/j773g-boot.sh) | One logged RAM-only boot of a ladder rung through the m1n1 proxy (run on the host) |
 | [tools/j773g-adt-dump.sh](tools/j773g-adt-dump.sh) | Pull the live ADT into the git-ignored `private/` |
+| [tools/j773g-install.sh](tools/j773g-install.sh), [tools/j773g/install-root.sh](tools/j773g/install-root.sh) | Omarchy onto the partitions Gravity's installer made, no USB drive ([docs/j773g-install.md](docs/j773g-install.md)) |
 | `docs/j773g-*.md` | Mini-specific notes |
 | everything else | Upstream's J713 work, unchanged; its front page is now [docs/upstream-README.md](docs/upstream-README.md) |
 

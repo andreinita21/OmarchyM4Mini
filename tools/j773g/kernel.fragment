@@ -109,6 +109,10 @@ CONFIG_MODULES=y
 # Native HDMI through DCP (only used by the g6-display rung and later)
 CONFIG_BACKLIGHT_CLASS_DEVICE=y
 CONFIG_DRM_APPLE=y
+# The mini's HDMI sits behind the DisplayPort PHY (apple,t8122-dptx-phy in
+# the J773g DT): without this driver apple-dcp defers forever on "Failed to
+# get dp-phy: -517" and HDMI stays dark (seen 2026-10-17, netlog).
+CONFIG_PHY_APPLE_DPTX=y
 CONFIG_DRM_APPLE_AUDIO=n
 
 # Persistent console in RAM (Gravity's ramoops reservation): after a hang or

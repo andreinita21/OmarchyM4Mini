@@ -8,8 +8,8 @@
 
 pkgname=m1n1-gravity
 pkgver=1.6.1.gravity20261013
-pkgrel=2
-pkgdesc='GravityLinux m1n1 (T8132 / M4 Mac mini support) with a bounded dockchannel console'
+pkgrel=3
+pkgdesc='GravityLinux m1n1 (T8132 / M4 Mac mini support), NO_DISPLAY as Gravity ships it, bounded dockchannel console'
 _commit=7243b815c4d78f39047172b866dc6518d5cab11d
 _artwork_commit=e613a87e526f8fec439c4129e69dd2821b38d258   # the fork's artwork submodule
 arch=('aarch64')
@@ -45,7 +45,12 @@ build() {
   # LOGO=bootlogo appends the chainload logo payload built from the fork's own
   # data/bootlogo_{256,128}.png (already Gravity artwork); the RPM does the same
   # with gravity-logos' copies.
-  make ARCH= RELEASE=1 LOGO=bootlogo M1N1_VERSION_TAG="v1.6.1-gravity-${_commit:0:10}"
+  # NO_DISPLAY=1 as Gravity's RPM (m1n1-no-display.patch) and installer build
+  # both of their stages: on the M4 mini m1n1's DCP bring-up crashes the
+  # display coprocessor and HDMI stays dead for the kernel. The boot
+  # framebuffer is left as iBoot handed it over; the kernel's DCP driver
+  # brings HDMI up.
+  make ARCH= RELEASE=1 NO_DISPLAY=1 LOGO=bootlogo M1N1_VERSION_TAG="v1.6.1-gravity-${_commit:0:10}"
 }
 
 package() {

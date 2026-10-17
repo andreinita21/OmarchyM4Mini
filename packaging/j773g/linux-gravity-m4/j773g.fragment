@@ -23,6 +23,10 @@ CONFIG_PSTORE_PMSG=y
 # Gravity's display driver calls non-exported arch helpers (can_set_direct_map,
 # dcache_clean_inval_poc): it only links built in, as Gravity ships it.
 CONFIG_DRM_APPLE=y
+# The mini's HDMI sits behind the DisplayPort PHY (apple,t8122-dptx-phy in
+# the J773g DT): without this driver apple-dcp defers forever on "Failed to
+# get dp-phy: -517" and HDMI stays dark (seen 2026-10-17, netlog).
+CONFIG_PHY_APPLE_DPTX=y
 CONFIG_DRM_APPLE_AUDIO=y
 CONFIG_BACKLIGHT_CLASS_DEVICE=y
 # DRM_APPLE "depends on TYPEC || !TYPEC": a modular Type-C core caps it at =m.

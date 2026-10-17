@@ -429,3 +429,174 @@ Next step: hardware (Andrei): route A, ladder stock -> g0..g8, then
   tools/j773g-disk.sh write <USB SSD> + tools/j773g-boot.sh u0. Offline:
   nothing urgent (J773G_CMDLINE after the ladder; upstream drafts are
   Andrei's to post).
+
+## 2026-10-17 — setup 11 (Gravity installed on the mini; host moves to the MacBook Pro)
+Model/effort: Fable 5.1 / default (status review, no build)
+Changed:
+- Hardware (Andrei, before this session): Gravity Linux alpha installed on
+  the mini from gravitylinux.org (home-day checklist §2, route A) and it
+  booted. That proves m1n1 stage 1 + stub + firmware + Gravity's J773g DT on
+  this unit. Details of what was exercised (HDMI, USB, Ethernet, Wi-Fi) not
+  yet recorded.
+- Host is now the MacBook Pro (M4 Pro, macOS 27.0.1). The checkout and the
+  whole build/j773g kit (16 GB incl. disk.img) live on the external USB SSD
+  "Disk D" (disk4, Kingston XS1000), so no kit copy from the mini is needed.
+  pyserial 3.5 + construct 2.10.70 installed (--user). Docker Desktop not
+  running on the MacBook; the j773g-src Docker volume is on the mini.
+- tools/j773g-disk.sh: macOS 27's diskutil no longer prints "Internal:", so
+  `write` refused every disk; now only an explicit "Internal: Yes" refuses.
+  New guard: the whole disk behind the repository's volume (APFS physical
+  store resolved) is refused on macOS and Linux - the dev SSD passed every
+  other check. Tested: disk4 refused (repo), disk3 refused (macOS).
+Result / last log line: no ladder boot yet; nothing written to the mini's
+  ESP by us (the Gravity installer did its own partitioning with approval).
+- Decision (Andrei): Gravity was only a test and is disposable; no second
+  USB drive. Rung u0 skipped; §5a done directly. Mini layout as reported:
+  macOS 80 GB, the rest Gravity.
+- tools/j773g-install.sh (serve on the host, prepare inside Gravity) and
+  tools/j773g/install-root.sh (busybox, RAM shell): docs/j773g-install.md.
+  prepare sets the ESP volume id 4F4D-5801, overlays Limine/UKI, keeps
+  vendorfw/ and boot.bin.gravity, leaves boot.bin = proxy m1n1 and the
+  Omarchy stage 2 as boot.bin.omarchy, reformats Boot from boot.img, writes
+  omarchy/j773g-install.env. install-root streams root.img over HTTP onto
+  Gravity's root (UUID-checked, typed back, sha256 verified) and only then
+  switches boot.bin. serve tested locally (MANIFEST, 12.7 GB root.img,
+  esp.tar served); prepare/install-root untested until the hardware run.
+Result / last log line: serve: MANIFEST with sha256 for root.img, boot.img,
+  esp.tar, m1n1.bin, install-root.sh. No boot attempted on the mini.
+Next step (hardware, Andrei, docs/j773g-install.md): serve on the MacBook;
+  prepare in Gravity; poweroff; proxy mode -> ADT dump, stock, g6-display;
+  install-root.sh from the g6 shell; power-cycle into Omarchy first boot.
+  Then P3.6. Record what the screen shows after every boot.
+
+## 2026-10-17 — setup 12 (hardware day: prepare done, HDMI dark, two root causes)
+Model/effort: Fable 5.1 / default (hardware session from the MacBook)
+Changed:
+- Hardware (Andrei): serve on the MacBook; prepare ran in Gravity (ESP
+  4F4D-5801, Boot reformatted, env written; the mini fetched esp.tar,
+  boot.img, m1n1.bin). Mini on USB (back-middle) -> proxy mode OK, ADT dump
+  OK (private/adt-live-*). HDMI stayed black on every boot.
+- Root cause 1 (m1n1): iBoot hands the stub a 640x1136 dummy framebuffer on
+  this unit even with the monitor on (the picker route did not change it);
+  m1n1 then tries its own DCP bring-up and the DCP crashes ("AFK: ring
+  buffer size mismatch", IOP crashed, dcp-iboot failed). Gravity builds both
+  stages with NO_DISPLAY=1 (packages' m1n1-no-display.patch "Required for M4
+  Mac mini bring-up", installer build.sh). Our proxy m1n1 and the packaged
+  stage 2 lacked it. Fix: NO_DISPLAY=1 in tools/j773g/inner-build.sh
+  (gravity flavour) and packaging/j773g/m1n1-gravity/PKGBUILD (pkgrel 3);
+  rebuilt build/j773g/m1n1-gravity/m1n1.bin (shows "display: skip
+  configuration (NO_DISPLAY)", proxy runs, no DCP crash). Stage 2 recomposed
+  as new m1n1 + the old DTB/U-Boot tail (build/j773g/image/esp/m1n1/boot.bin;
+  the old one kept as m1n1-gravity/boot.bin.omarchy-dcpcrash). New
+  tools/j773g/esp-fix-macos.sh (served) replaced boot.bin, boot.bin.proxy
+  and boot.bin.omarchy on the mini's ESP from macOS (old ones *.dcpcrash).
+  Expected from now on: proxy mode = black HDMI; the kernel lights it.
+- Blind-boot tooling: build/j773g/initramfs-net.cpio.gz (init = tools/j773g/initramfs-net.init:
+  eth0 via udhcpc, probe output + dmesg to the host on TCP 9999 every 5 s,
+  telnetd on 23; j773g_host= on the cmdline) with a `nc -l 9999` loop on the
+  host (build/j773g/logs/netlog/). Boot: BOOT_INITRD=... BOOT_ARGS="...
+  panic=10 j773g_host=HOST" tools/j773g-boot.sh stock stock-net. Verdict in
+  under a minute without a screen. busybox `reboot` from that shell took the
+  mini down but it did not come back (reboot path unproven, g7 territory);
+  power-cycle by hand.
+- Root cause 2 (kernel, stock rung with Gravity's DT): "platform
+  30ae00000.dcp: devices misses supplier soc:audio-controller" (Gravity's DT
+  has the dpaudio node enabled; our ladder config has no driver for it, so
+  fw_devlink blocks apple-dcp). With fw_devlink=permissive apple-dcp probes
+  and then defers forever: "Failed to get dp-phy: -517" -
+  CONFIG_PHY_APPLE_DPTX was not set in tools/j773g/kernel.fragment; the
+  mini's HDMI sits behind apple,t8122-dptx-phy. Our own DTs (g6, packaged)
+  keep audio-controller disabled in the ladder but enabled in the packaged
+  DTB; the package config has DRM_APPLE_AUDIO=y (binds dpaudio) and
+  PHY_APPLE_DPTX=m, and the image's UKI initramfs carries no phy-apple-dptx
+  module, so the installed system would light HDMI late or never.
+  Fix: CONFIG_PHY_APPLE_DPTX=y in both fragments (ladder and package).
+  Builds started on the MacBook: ladder src/config/dtbs/kernel
+  (build/j773g/kernel-dptx-build.log), then the ALARM container image,
+  linux-gravity-m4 package and the image.
+- Side findings: mini = Mac16,10, Ethernet BCM57762 (tg3) works in the stock
+  rung (DHCP .95), NVMe p1..p7 seen, Logitech USB receiver enumerates.
+  The stock rung needs fw_devlink=permissive with our config (dpaudio).
+Result / last log line: netlog stock-net-devlink: "apple-dcp 30ae00000.dcp:
+  Failed to get dp-phy: -517 ... deferred probe pending".
+Next step: ladder kernel with DPTX -> g6-display over the proxy (HDMI must
+  light); rebuild linux-gravity-m4 + image; re-serve; install-root.sh from
+  the g6 shell; first boot. Record the screen after every boot.
+- Hardware (continued): ladder kernel with PHY_APPLE_DPTX=y -> g6-display
+  lights HDMI (1920x1200@60, appledrm fb0, shell + Logitech keyboard). The
+  stock rung needs fw_devlink=permissive (Gravity's DT, dpaudio). The
+  busybox initramfs has no blkid: install-root.sh now reads fs UUIDs from the
+  superblocks (btrfs/ext4/FAT) and takes sizes/sha from the live MANIFEST;
+  Boot (1 GiB) is refilled from boot.tar (the image's /boot files) instead
+  of dd'ing the 2 GiB boot.img. install-root.sh wrote and verified root.img;
+  a power-cycle before it finished left the ESP FAT dirty (invalid cluster
+  chain on boot.bin.omarchy) -> tools/j773g/esp-repair-macos.sh (diskutil
+  repairVolume + refresh + switch) and esp-switch.sh (RAM shell).
+- Root cause 3 (installed system): the Omarchy stage 2 (m1n1 -> U-Boot ->
+  Limine -> UKI) boots black and resets in a loop (iBoot then shows "The
+  version of macOS on the selected disk needs to be reinstalled" for the
+  stub; pick the Linux volume in the picker to boot it again). Proxy boot of
+  the UKI's own kernel + initrd + packaged DTB onto the installed root:
+  black with the UKI command line, Omarchy up (DHCP .95 after 21 s) with
+  "nosmp idle=nop" added. The UKI cmdline = KERNEL_CMDLINE[default] in
+  /etc/default/limine, derived from /etc/default/grub before finalize_root
+  added J773G_CMDLINE, so the image never carried the ladder's options.
+  Fix: image-build.sh patches KERNEL_CMDLINE[default] before the UKI is
+  built; image rebuilt with J773G_CMDLINE="nosmp idle=nop"; esp-switch.sh
+  also fixes /etc/default/limine and grub on the installed root and
+  refreshes an outdated EFI/Linux (MANIFEST line uki.sha256).
+- Busybox telnetd in the RAM shell needs /dev/pts (initramfs-net.init
+  mounts devpts now); m1n1 proxyclient linux.py picks compression from the
+  file suffix (Image.gz, not a bare "linux").
+- First boot of the installed system (2026-10-17, ~14:50): Omarchy boots on
+  its own (m1n1 -> U-Boot -> Limine -> UKI, HDMI up) and the owner setup
+  refuses: "This Mac was set up to encrypt its disk, but the disk was not
+  encrypted" (omarchy-mac-boot provision.sh). omarchy-mac-first-boot consumes
+  /boot/efi/omarchy/install.conf (the Mac installer app writes it); MISSING
+  means encrypt=1. Our ESP never had one. The initramfs carries the
+  omarchy-mac-encrypt hook (it needs /boot/omarchy/luks-key to convert).
+  Fix: image-build writes esp/omarchy/install.conf (format=1, encrypt=0);
+  prepare asks "Encrypt the Linux disk at first boot? [y/N]" (J773G_ENCRYPT
+  answers), records ENCRYPT in j773g-install.env, writes install.conf and,
+  for yes, stages a 64-byte throwaway luks-key on Boot; install-root.sh and
+  esp-switch.sh write install.conf from ENCRYPT (default off). Encrypt=1 is
+  wired but untested on the J773g. Andrei's decision: no encryption, but
+  the setup must offer the choice. A hand fix of the consumed copy
+  (/var/lib/omarchy/mac-first-boot/install.conf encrypt=0 + reboot) did not
+  get the owner setup through on the mini (error not read yet; log is
+  /var/log/omarchy-provision-owner.log). Next: re-run part 3 from the g6
+  shell with the rebuilt image, then first boot; read that log if it fails.
+- ESP corruption, second round (2026-10-17 ~16:40): after the macOS
+  repairVolume the same invalid cluster chain (i_pos 398218) came back on
+  m1n1/boot.bin.omarchy, and install-root's final cp of boot.bin did not
+  survive a remount (boot.bin read as the proxy m1n1 again -> proxy mode on
+  the real boot). The J773g NVMe has 4096-byte logical sectors; the FAT the
+  Gravity installer / fatlabel left was not trustworthy. New
+  tools/j773g/esp-reformat.sh (RAM shell, served): saves vendorfw/, omarchy/,
+  m1n1/boot.bin.gravity + .proxy, ubootefi.var and Gravity's leftovers to
+  RAM (busybox tar has no --exclude: copy by name), busybox mkdosfs (FAT32,
+  4096 B/sector), volume id 4F4D-5801 written into sector 0 (and the
+  BkBootSec slot at 6*bytes-per-sector), restore, image EFI/ + limine.conf +
+  stage 2, install.conf, boot.bin = stage 2, every sha verified after a
+  clean remount. Ran clean at 16:45; vendorfw reads back.
+- Re-install from the g6 shell done at 16:27 through telnetd (initramfs-net
+  with devpts): install-root.sh now accepts a root that already carries
+  Omarchy's UUID (re-install), takes the typed answer from stdin (a file;
+  /dev/stdin does not exist there), run with setsid so a dropped telnet does
+  not kill it (busybox has no nohup).
+- First boot after setup, black greeter (2026-10-17 ~18:00, over SSH after
+  opening ufw 22/tcp and enabling sshd from the g6 shell; the installed
+  system is up as markIV, DHCP .95): HDMI connector connected+enabled, SDDM
+  + Hyprland greeter + Xwayland running, but the kernel's asahi_m4 driver
+  bound the M4 GPU (card0 + renderD128) and Hyprland rendered through it:
+  "DRM_IOCTL_ASAHI_SUBMIT render failed" / "[Hyprland] export failed" in a
+  loop, nothing on screen. Fix: /etc/modprobe.d/90-j773g-no-gpu.conf
+  (blacklist asahi_m4 + install /bin/false) and a clean reboot -> only
+  card1 (display-subsystem), Mesa falls back (zink fails, llvmpipe), no
+  submit errors, greeter up. rmmod asahi_m4 on the live system crashed the
+  kernel (reboot, and the uncommitted modprobe.d write was lost: btrfs
+  30 s commit) - do not unload it live. image-build.sh now ships the
+  blacklist and journald Storage=persistent (Omarchy's default journal is
+  volatile; the g6-shell chroot found no journal files). ufw: default DROP,
+  only 53317 open; 22/tcp added by hand in /etc/ufw/user.rules on the mini
+  (not in the image).

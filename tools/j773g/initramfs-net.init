@@ -1,0 +1,52 @@
+#!/bin/busybox sh
+# SPDX-License-Identifier: MIT
+# J773g bring-up initramfs, network-reporting variant: same probes as the
+# HDMI one, plus eth0 up (DHCP, static fallback) and the probe output and
+# dmesg streamed every few seconds to the host (j773g_host=IP on the
+# cmdline, default 192.168.100.173, TCP 9999), telnetd on 23 for a shell.
+# For a mini whose HDMI stays dark: the verdict arrives on the host.
+/bin/busybox --install -s /bin
+export PATH=/bin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mount -t tmpfs tmpfs /tmp
+mkdir -p /dev/pts && mount -t devpts devpts /dev/pts 2>/dev/null   # telnetd needs a pty
+HOST=192.168.100.173
+for w in $(cat /proc/cmdline); do case $w in j773g_host=*) HOST=${w#j773g_host=};; esac; done
+probes() {
+  echo
+  echo "=== J773g initramfs (net): $(uname -r) ==="
+  cat /proc/cmdline
+  echo "=== probe results ==="
+  dmesg | grep -i -E 'macsmc|smc[-_]|rtkit|sart|nvme|dwc3|atcphy|sn201202|tps6598|typec|dart|apple-pcie|pcie-apple|tg3|brcmfmac|wlan|xhci|usb [0-9]|input:|simpledrm|fbcon|apple-drm|dcp|cpufreq|pstore|ramoops|error|fail|timed out|timeout' | grep -v -E 'SMC Calling|RPC:' | tail -40
+  mkdir -p /sys/fs/pstore
+  if mount -t pstore pstore /sys/fs/pstore 2>/dev/null && [ -n "$(ls /sys/fs/pstore)" ]; then
+    echo "=== previous boot (pstore: $(ls /sys/fs/pstore | tr '\n' ' ')) ==="
+    for f in /sys/fs/pstore/console-ramoops* /sys/fs/pstore/dmesg-ramoops*; do
+      [ -f "$f" ] && { echo "--- $f"; tail -25 "$f"; }
+    done
+  fi
+  echo "=== block devices ==="
+  cat /proc/partitions
+  echo "=== network ==="
+  ip -o link 2>/dev/null
+  echo "=== usb ==="
+  ls /sys/bus/usb/devices 2>/dev/null | tr '\n' ' '; echo
+}
+probes 2>&1 | tee /tmp/boot.log
+# eth0 up
+printf '#!/bin/sh\ncase $1 in bound|renew) ifconfig $interface $ip netmask $subnet; [ -n "$router" ] && route add default gw ${router%%%% *} $interface;; esac\n' >/tmp/d; chmod +x /tmp/d
+for i in 1 2 3 4 5 6 7 8 9 10; do [ -e /sys/class/net/eth0 ] && break; sleep 1; done
+if [ -e /sys/class/net/eth0 ]; then
+  ifconfig eth0 up
+  udhcpc -i eth0 -n -q -t 8 -s /tmp/d 2>&1 | tee -a /tmp/boot.log || ifconfig eth0 192.168.100.60 netmask 255.255.255.0 up
+  ifconfig eth0 2>&1 | tee -a /tmp/boot.log
+  telnetd -l /bin/sh -p 23 2>/dev/null
+  ( while :; do { cat /tmp/boot.log; echo "=== dmesg $(cut -d' ' -f1 /proc/uptime)s ==="; dmesg; echo "=== pstore ==="; cat /sys/fs/pstore/* 2>/dev/null | tail -60; } | nc -w 3 "$HOST" 9999 2>/dev/null; sleep 5; done ) &
+  echo "=== reporting to $HOST:9999 every 5 s; telnetd on 23 ==="
+else
+  echo "=== no eth0 ===" | tee -a /tmp/boot.log
+fi
+echo "=== done; shell on console ==="
+exec setsid cttyhack sh
