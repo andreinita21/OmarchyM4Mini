@@ -707,3 +707,15 @@ failed boot iBoot falls back to macOS, from where the ESP (disk0s4,
   - Backups: /root/j773g-backup/ (pacman.conf, environment, old blacklist).
 - My helper sudo() { echo 2006 | sudo -S ...; } plus `| sudo tee` writes
   EMPTY files (the password line replaces the pipe); use sudo sh -c.
+- Audio (2026-10-17 ~23:40): internal speaker and 3.5 mm jack WORK.
+  - Speaker: Gravity's protected T8132 driver (snd-t8132-speaker, card
+    T8132Speaker, PipeWire "Built-in Audio Mono"), kernel pkgrel 6.
+    Checklist in docs/j773g-speaker-safety.md (AID36/AID48 tuning decoded,
+    -10 dB ceiling kept, quiet first test). Quieter than macOS by design.
+  - Jack: kernel pkgrel 7 (j773g-headphones.patch + t8132-j773g-headphones.dtsi,
+    upstream's J713 cluster-2 card), omarchy-j773g 20261017 (UCM +
+    WirePlumber hook). Codec "CS42L84, Revision: 36"; jack detect works;
+    tones left/right correct; music clean; unplug -> speaker, plug ->
+    headphones. Headset mic route present, untested (3-pole headphones).
+  - New drivers were first loaded by hand (temporary modprobe.d holds,
+    now removed); both autoload at boot.
