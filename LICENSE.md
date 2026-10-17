@@ -15,7 +15,7 @@ Existing file-level notices using KB2UKA remain valid and are preserved.
 | --- | --- |
 | Original prose in `README.md`, `SPEC.md`, `docs/*.md`, `recon/README.md`, and the original explanatory text in this file and `THIRD_PARTY_NOTICES.md` | MIT |
 | Original `tools/` and `tests/` files with MIT headers, plus `.gitignore`; upstream test fixtures retain their own notices | MIT |
-| `patches/0001-*.patch` through `patches/0016-*.patch`: changes to Apple `.dts` / `.dtsi` files | GPL-2.0-or-later OR MIT |
+| `patches/0001-*.patch` through `patches/0017-*.patch`: changes to Apple `.dts` / `.dtsi` files | GPL-2.0-or-later OR MIT |
 | `recon/pmgr-j713-generated-from-live-adt.dtsi` | GPL-2.0-or-later OR MIT for the contributed description; upstream notices remain applicable to any incorporated source material |
 | `patches-kernel/m4-boot-hacks-7.1.9.patch`: `arch/arm64/lib/delay.c` hunks | GPL-2.0-only |
 | The same patch: `drivers/irqchip/irq-apple-aic.c` hunks | GPL-2.0-or-later |
@@ -28,7 +28,13 @@ Existing file-level notices using KB2UKA remain valid and are preserved.
 | `patches-kernel/j713-input/dockchannel-power-v2.patch`: Asahi DockChannel HID hunks | GPL-2.0-only OR MIT |
 | `patches/installer/`: changes to the Gravity/Asahi installer and original added helpers/tests | MIT, retaining the upstream Asahi notice |
 | `patches/omarchy/offline-node-arm64.patch`, `tests/fixtures/mise-work-v4.0.4.sh` | Omarchy MIT terms, retaining its upstream notice in `tests/fixtures/omarchy-LICENSE` |
+| `audio/j713/headphones/kernel/` | GPL-2.0-only |
+| `audio/j713/headphones/policy/` and `README.md`, `tools/m4-headphones.py`, `tools/build-j713-headphones.sh`, `packaging/omarchy-m4/omarchy-m4-headphones/`, `docs/j713-headphones.md` and the headphone tests | MIT |
+| `display/evdi/build.sh`, `display/evdi/bench/evdi_probe.c`, `display/evdi/README.md`, `packaging/omarchy-m4/omarchy-m4-evdi/`, `docs/j713-external-displays.md` | MIT; the evdi binaries they build or package keep DisplayLink's GPL-2.0-only (module) and LGPL-2.1-or-later (library) terms |
 | Full texts in `LICENSES/` | Reproduced license documents; their own terms apply |
+
+The J713 headphone jack rows above are Copyright (c) 2026 Luthfi Hizb, under
+the same terms.
 
 An `OR` grants a choice between the listed alternatives for that material.
 A patch containing multiple source files keeps the terms of each affected
@@ -41,6 +47,7 @@ The license texts are included here:
 - [MIT](LICENSES/MIT.txt)
 - [GNU GPL version 2 only](LICENSES/GPL-2.0-only.txt)
 - [GNU GPL version 2 or later](LICENSES/GPL-2.0-or-later.txt)
+- [GNU LGPL version 2.1 or later](LICENSES/LGPL-2.1-or-later.txt)
 - [BSD 2-Clause](LICENSES/BSD-2-Clause.txt)
 - [ISC](LICENSES/ISC.txt)
 - [Gravity/Asahi installer MIT notice](LICENSES/Gravity-installer-MIT.txt)
@@ -72,8 +79,12 @@ texts contain the warranty and liability terms.
 
 ## J713 runtime assets
 
-The measured FIR responses named by `audio/j713/qualified.json` are not included
-in this source tree. Their redistribution license has not been established.
-Exact-hash local assembly is not a grant of rights to redistribute them. See
-[audio/j713/README.md](audio/j713/README.md) for build provenance and open
-corresponding-source requirements.
+The approved native numerical filters are included under `audio/j713/filters/`
+as static platform data. Their [provenance record](audio/j713/filters/README.md)
+distinguishes those final coefficients from the Apple software and tuning inputs
+used to reproduce them. The source-code licenses above do not grant rights in
+those Apple inputs.
+
+`audio/j713/qualified.json` keeps its historical hold for the earlier reference
+files. Other corresponding-source requirements remain described in
+[audio/j713/README.md](audio/j713/README.md).

@@ -67,6 +67,13 @@ as a reference (the research notes record `53f8ee9b`). The boot sessions
 used a separately obtained m1n1 checkout. No m1n1 tree or binary is bundled;
 `tools/adt.py` is a standalone parser, not a copied m1n1 module.
 
+`patches-m1n1/base/src/` holds five unmodified MIT-licensed m1n1 files
+(`dockchannel_uart.c`, `iodev.c`, `iodev.h`, `nvme.c`, `nvme.h`) from the
+alpha.1 bootloader source, with that tree's `LICENSE` beside them in
+`patches-m1n1/base/`. The tests compile them against host shims. See
+[docs/j713-m1n1-dockchannel-tx.md](docs/j713-m1n1-dockchannel-tx.md) and
+[docs/j713-m1n1-issue82-ans-reset.md](docs/j713-m1n1-issue82-ans-reset.md).
+
 The upstream [MIT license](https://github.com/AsahiLinux/m1n1/blob/main/LICENSE)
 is reproduced below to preserve its notice for any adapted reference material:
 
@@ -145,6 +152,20 @@ configuration and devicetree base published with v0.1.0-alpha.1 (see
 and `patches/j713-smc-poweroff.dtso` in this repository. Each package carries
 its license texts. See [package-channel.md](docs/package-channel.md).
 
+### DisplayLink evdi
+
+`omarchy-m4-evdi` redistributes binaries built from DisplayLink's
+[evdi](https://github.com/DisplayLink/evdi) 1.15.1, unchanged: the `evdi`
+kernel module (GPL-2.0-only; Copyright (c) 2013-2026 DisplayLink (UK) Ltd.,
+with parts Copyright (C) 2012 Red Hat and parts based on `udlfb.c`, Copyright
+(C) 2009 its respective authors) and `libevdi` (LGPL-2.1-or-later; Copyright
+(c) 2015-2024 DisplayLink (UK) Ltd.). Each source file's own notice governs. The
+corresponding source is the upstream `v1.15.1` archive, mirrored in the
+`package-inputs` release, built with `display/evdi/build.sh`. The package
+carries both license texts; the LGPL text is
+[LICENSES/LGPL-2.1-or-later.txt](LICENSES/LGPL-2.1-or-later.txt), copied from
+evdi's `library/LICENSE`. Synaptics' DisplayLinkManager is not redistributed.
+
 ## Additional runtime components
 
 Native runtime candidates also use Gravity/Asahi kernel and decoder work, Mesa,
@@ -154,7 +175,9 @@ release as required by their licenses. Listing a dependency here does not mean
 its complete source or binaries are already included in this checkout. Preserve
 every upstream file-level notice when those components are joined.
 
-The measured speaker FIR assets have no established redistribution license.
-No project credit or source license grants rights to Apple firmware, macOS,
-Widevine or separately obtained assets. See the
-[experimental release boundary](docs/experimental-release.md).
+The static J713 FIR assets are final numerical responses reproduced with the
+retained measurement pipeline. Their [provenance record](audio/j713/filters/README.md)
+identifies the inputs, approved output identities and the distinction between
+final numerical filters and the source inputs. No project credit or source-code license grants
+rights in Apple firmware, macOS, tuning files, Widevine or separately obtained
+assets. See the [experimental release boundary](docs/experimental-release.md).

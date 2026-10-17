@@ -11,8 +11,14 @@ development computer or USB drive afterward.
 
 ## Download
 
-Get `download-j713.command` from the **v0.1.0-alpha.1** GitHub release. In macOS
-Terminal, run the downloaded file:
+Get `download-j713.command` from the **v0.1.0-alpha.1-update.4** GitHub release,
+the latest installer. Its image starts the GPU on every 13-inch M4 Air,
+including the base model's eight-core GPU. It ships the speaker filters in the
+image, carries the stage 1 fix for #82 and connects to M4 updates by itself
+(see [UPDATES.md](updates.md#installer-update-4)). No fresh installation from
+this exact kit has been confirmed yet, so please report how yours goes. Update 3
+remains available; with it, use `update.3` in place of `update.4` in the paths
+below. In macOS Terminal, run the downloaded file:
 
 ```sh
 bash "$HOME/Downloads/download-j713.command"
@@ -26,23 +32,27 @@ ZIP as an installer. Downloads become publicly accessible when the repository
 becomes public; before then, GitHub authentication is required to acquire assets.
 
 The resulting kit is at:
-`~/Downloads/Omarchy-M4-v0.1.0-alpha.1/installer/`.
+`~/Downloads/Omarchy-M4-v0.1.0-alpha.1-update.4/installer/`.
 You may copy that complete directory to an exFAT USB drive. Keep its directory
-layout intact. If using USB, use the **port closest to the hinge**: the current
-Linux image leaves the front port disabled. macOS may recognize both ports.
+layout intact. If using USB, use the **port closest to the hinge**: the
+installed image turns on the front port only after its first M4 update
+(`omarchy-m4-boot` 1-12). macOS may recognize both ports.
 
 ## Start in macOS
 
 1. Connect power and the internet. Boot macOS normally and open Terminal locally.
    An administrator account is required; run from native ARM64 macOS, not Rosetta.
-   The installer firmware profile requires macOS **26.5.1 or newer**. Audio input
-   compatibility is narrower: this release recognizes exact Apple AudioDSP and
-   AID37 tuning files recorded in `owner-audio/bundle/manifest.json`. Different
-   macOS builds may be refused before any partition changes.
+   The installer firmware profile requires macOS **26.5.1 or newer**. Updates 3
+   and 4 already include the approved speaker filters and do not read macOS
+   AudioDSP. The update 2 kit is narrower: it recognizes exact Apple AudioDSP and
+   AID37 tuning files recorded in `owner-audio/bundle/manifest.json`. macOS
+   26.5.1, 26.5.2 and 26.6.2 (25G83) are qualified there; other builds may be
+   refused before any partition changes. Firmware, recovery and other installer
+   dependencies still need qualification on a newer macOS build.
 2. Change into the kit directory. For the default download location:
 
    ```sh
-   cd "$HOME/Downloads/Omarchy-M4-v0.1.0-alpha.1/installer"
+   cd "$HOME/Downloads/Omarchy-M4-v0.1.0-alpha.1-update.4/installer"
    bash Install.command --install
    ```
 
@@ -55,9 +65,11 @@ Linux image leaves the front port disabled. macOS may recognize both ports.
 4. Confirm that you have read these instructions. Choose whether to enable Google
    Widevine for protected movies. **No is the default.** No Widevine binary is in
    the download; consenting enables acquisition from Google after Linux starts.
-5. Speaker filters are generated from the Mac's installed components, in memory,
-   and must match the release's exact expected hashes. If preparation fails,
-   stop: no partitioning has begun. Do not bypass the checks or substitute filters.
+5. Updates 3 and 4 include the speaker filters and proceed directly to administrator
+   authentication. The update 2 kit instead generates them from the Mac's
+   installed components and requires exact output hashes. If that preparation
+   fails, stop: no partitioning has begun. Do not bypass its checks or
+   substitute filters.
 6. Enter your **macOS** password when requested. Terminal displays no characters
    while you type it. Sleep prevention stays active during the installer.
 
@@ -106,8 +118,26 @@ records a short status file at `/var/log/omarchy-m4-boot-status.json`. Inspect:
 
 ```sh
 sudo journalctl -b -u m4-gpu -u m4-video -u m4-j713-audio-register --no-pager
+sudo journalctl -b -k --grep 'G16|asahi' --no-pager
+sudo cat /tmp/m4-gpu-start.log
 sudo cat /var/log/omarchy-provision-owner.log
 ```
+
+On the v0.1.0-alpha.1 installers through update 2, `m4-gpu-start`'s own
+messages are only in `/tmp/m4-gpu-start.log` until the Air is connected to M4
+updates, and a restart clears that file.
+
+Update 4's image carries the GPU module that starts the GPU on every 13-inch
+M4 Air. The kits through update 3 have alpha.1's GPU module instead. It starts
+the GPU only on an Air with the ten-core GPU whose GPU power limit is exactly
+24800 mW. Two of the three ten-core Airs measured so far are lower
+([#57](https://github.com/Kb2uka/Omarchy-M4-Native/issues/57)), and the
+base-model Air's eight-core GPU is refused outright
+([#118](https://github.com/Kb2uka/Omarchy-M4-Native/pull/118)); both reach
+this login instead of the desktop.
+From the recovery login, do the [last step](#last-step-connect-to-m4-updates-required)
+now: `nmtui` works here, and so does the connect line. Then restart. The update
+brings the fixed module, which also logs why it refuses a GPU.
 
 A stationary bar does not prove disk writes have stopped. Do not erase the
 installation or repeatedly force power off to diagnose a stalled handoff.
@@ -133,8 +163,7 @@ The last lines it prints include
 Air once. From then on, Shut Down turns it off, and `omarchy-m4-update` brings
 new M4 fixes. [Details, messages and rollback](updates.md).
 
-A later installer will do this step on its own (the published v0.1.0-alpha.1
-installer does not). Once your
+Updates 3 and 4 do this step on their own (installers through update 2 do not). Once your
 account exists and the Air is online, a background service
 (`m4-channel-connect.timer`) runs the same setup within about 20 minutes and
 retries until it succeeds; restart once afterwards. Check it with

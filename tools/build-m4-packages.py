@@ -18,17 +18,46 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGING = ROOT / 'packaging/omarchy-m4'
+HEADPHONES = 'audio/j713/headphones/policy/usr/share/'
 # Repository files a PKGBUILD lists by bare name, staged next to it.
 STAGED = {
     'omarchy-m4-boot': {'m4-boot-compose.py': 'tools/m4-boot-compose.py',
                         'm4-update-check.py': 'tools/m4-update-check.py',
                         'm4-channel-setup.py': 'tools/m4-channel-setup.py',
                         'omarchy-m4-update': 'tools/omarchy-m4-update',
+                        'm4-lid-lock.py': 'tools/m4-lid-lock.py',
+                        'm4-notch.py': 'tools/m4-notch.py',
+                        # Notices for the notch stage 2, an m1n1 build (display/j713).
+                        'm1n1-LICENSE': 'display/j713/m1n1-base/LICENSE',
+                        'm1n1-README.md': 'display/j713/m1n1-base/README.md',
+                        'm1n1-LICENSE.BSD-2.libfdt': 'display/j713/m1n1-base/3rdparty_licenses/LICENSE.BSD-2.libfdt',
+                        'm1n1-LICENSE.BSD-3.arm': 'display/j713/m1n1-base/3rdparty_licenses/LICENSE.BSD-3.arm',
+                        'm1n1-LICENSE.BSD-3.dwc3': 'display/j713/m1n1-base/3rdparty_licenses/LICENSE.BSD-3.dwc3',
+                        'm1n1-LICENSE.CC0': 'display/j713/m1n1-base/3rdparty_licenses/LICENSE.CC0',
+                        'm1n1-LICENSE.GPL-2': 'display/j713/m1n1-base/3rdparty_licenses/LICENSE.GPL-2',
+                        'm1n1-LICENSE.minlzma': 'display/j713/m1n1-base/3rdparty_licenses/LICENSE.minlzma',
+                        'm1n1-LICENSE.OFL-1.1': 'display/j713/m1n1-base/3rdparty_licenses/LICENSE.OFL-1.1',
+                        'm1n1-LICENSE.tinf': 'display/j713/m1n1-base/3rdparty_licenses/LICENSE.tinf',
                         'MIT.txt': 'LICENSES/MIT.txt',
                         'GPL-2.0-or-later.txt': 'LICENSES/GPL-2.0-or-later.txt'},
     'omarchy-m4-speaker': {'m4-speaker-module.py': 'tools/m4-speaker-module.py',
                            'MIT.txt': 'LICENSES/MIT.txt',
                            'GPL-2.0-only.txt': 'LICENSES/GPL-2.0-only.txt'},
+    'omarchy-m4-gpu': {'m4-gpu-module.py': 'tools/m4-gpu-module.py',
+                       'MIT.txt': 'LICENSES/MIT.txt',
+                       'GPL-2.0-only.txt': 'LICENSES/GPL-2.0-only.txt'},
+    'omarchy-m4-headphones': {'m4-headphones.py': 'tools/m4-headphones.py',
+                              'J713Headphones.conf': HEADPHONES + 'alsa/ucm2/conf.d/J713Headphones/J713Headphones.conf',
+                              'HiFi.conf': HEADPHONES + 'alsa/ucm2/conf.d/J713Headphones/HiFi.conf',
+                              '83-j713-headphones.conf': HEADPHONES + 'wireplumber/wireplumber.conf.d/83-j713-headphones.conf',
+                              'j713-headphones.lua': HEADPHONES + 'wireplumber/scripts/default-nodes/j713-headphones.lua',
+                              'MIT.txt': 'LICENSES/MIT.txt',
+                              'GPL-2.0-only.txt': 'LICENSES/GPL-2.0-only.txt'},
+    'omarchy-m4-cpu': {'m4-cpu-idle.py': 'tools/m4-cpu-idle.py',
+                       'MIT.txt': 'LICENSES/MIT.txt',
+                       'GPL-2.0-only.txt': 'LICENSES/GPL-2.0-only.txt'},
+    'omarchy-m4-evdi': {'GPL-2.0-only.txt': 'LICENSES/GPL-2.0-only.txt',
+                        'LGPL-2.1-or-later.txt': 'LICENSES/LGPL-2.1-or-later.txt'},
 }
 MAKEPKG_CONF = '''\
 CARCH="aarch64"

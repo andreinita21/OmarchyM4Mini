@@ -25,16 +25,117 @@ outer files. Their authorship and licenses are preserved.
   ALSA dependency is separately retained in the application source.
 - `j713-audio-reconstruction.tar`: sanitized sysroot member inventory, retained
   Dockerfiles, compiler/dependency versions, supplemental exports and build joins.
-- `numpy-2.5.3.tar.gz`: source for the bundled numerical dependency. Wheel notices
-  and the local filter-generator source are also in `owner-audio/bundle/`.
 
-Speaker filters are generated from each owner's installed macOS components;
-neither those Apple components nor the resulting WAV files are distributed in
-this kit. The generator requires exactly the output hashes already required by
-the unchanged audio graph and protection manifest. The macOS installer inserts
-the owner files into its locally collected firmware package; first Linux boot
-installs regular WAV files before audio registration and first-user creation.
-Widevine binaries are also excluded and acquired separately only after consent.
+The four static speaker filters in `audio/j713/filters/` are included in the
+root image and current integration source. The assembler verifies every file
+against the approved native identities before modifying the image. It keeps
+those identities in the installed audio manifest; runtime integrity checks
+still require the exact files. See the [profile provenance](../audio/j713/filters/README.md).
+
+The historical generation sources remain available for development and
+reproduction. The installer does not ship or execute their native helpers or
+NumPy dependency. No Apple executable, tuning strip, extracted preset or raw
+render capture is included. Widevine is acquired separately only after consent.
+
+## m1n1 stage 1 (installer update 3)
+
+From installer update 3 the macOS installer's `boot/m1n1.bin` is the #82 build
+`8c5a15736c19d0a3428e64f01292791fb54dd68e09f2f5304a7210d19c42adce` in place of
+alpha.1's `18cc4cd1…`. Its source is `m1n1-stage1-source.tar.gz` with
+`patches-m1n1/stage1-ans-no-reset.patch` from `release-integration.tar.gz`,
+built by `patches-m1n1/build-test-loaders.sh` as described in
+[j713-m1n1-issue82-ans-reset.md](j713-m1n1-issue82-ans-reset.md). That script
+first rebuilds alpha.1's stage 1 byte for byte, so the two loaders differ only
+by the patch. The assembler accepts no other build for `--stage1` and records
+both hashes in `IMAGE.json`. `BOOTLOADER-SOURCE.md` still describes the
+retained archives and alpha.1's build of them.
+
+## GPU module (installer update 4)
+
+From installer update 4 the root image runs the Air GPU module that
+`omarchy-m4-gpu` 1-3 ships,
+`de0337a773930c7862a99706112dd71eaaecf2021707da248fd3d07feefdc824`, in place
+of alpha.1's `80cf3669…`. It accepts each Air's own GPU power limit up to
+24800 mW ([#57](https://github.com/Kb2uka/Omarchy-M4-Native/issues/57)) and the
+base-model Air's eight-core GPU
+([#118](https://github.com/Kb2uka/Omarchy-M4-Native/pull/118)), so a fresh
+install reaches the desktop on every 13-inch M4 Air without first connecting to
+M4 updates. Its source is `gpu/j713` in `release-integration.tar.gz` with
+`kernel-controller.tar.gz` and the GPU source packet, built by
+`gpu/j713/build-test-module.sh` (see [gpu/j713/README.md](../gpu/j713/README.md)).
+That script first rebuilds alpha.1's module byte for byte, so the two modules
+differ only by `g16.rs`.
+
+The assembler requires `--gpu-module` and accepts only that build. It swaps
+the module and its one line in `/opt/m4-gpu/runtime.sha256`, and keeps
+alpha.1's module and `runtime.sha256` in `/var/lib/omarchy-m4/gpu-module/`,
+where `m4-gpu-module` keeps them. A new install is therefore in the state an
+Air reaches through the channel: `m4-gpu-module` reports `fixed`, and
+`sudo m4-gpu-module --rollback` restores alpha.1. `IMAGE.json` records both
+hashes under `gpu_module`.
+
+## Binaries outside packages
+
+The installed root carries some programs, libraries and kernel modules that no
+pacman package owns, such as the GPU module at `/opt/m4-gpu/asahi_m4.ko`.
+`packaging/release-source-joins.json` lists each one by SHA-256 with the source
+that built it. Each entry names archives in this `source/` directory, most of
+them pinned by hash, and tracked paths in `release-integration.tar.gz`. A
+tracked path may be pinned to the commit that built the binary. The assembler
+then refuses unless that path is unchanged in the revision being assembled.
+The package channel similarly requires every binary downloaded from the
+`package-inputs` release to be joined to its pinned corresponding source in
+`packaging/channel-source-joins.json` (see [package-channel.md](package-channel.md)).
+
+`correspondence` records how the join was established:
+
+- `rebuilt-identical`: a rebuild from the named sources reproduced the exact
+  bytes.
+- `unverified`: the source is the likeliest published one, matched by file name
+  only.
+
+Every GPL binary is `rebuilt-identical`; the 14 MIT userspace entries (Mesa,
+the VA-API driver, the speaker daemon) remain `unverified`.
+
+- **GPU modules:** the published `kernel-controller.tar.gz` with the four Air
+  GPU files from `omarchy-j713-v0.1.0-alpha.1-gpu-air-source.tar.gz` reproduces
+  alpha.1's module byte for byte
+  ([issue 77](https://github.com/Kb2uka/Omarchy-M4-Native/issues/77)), now kept
+  at `/var/lib/omarchy-m4/gpu-module/alpha1-module.ko` for rollback. That packet
+  is attached to the v0.1.0-alpha.1 release; alpha.1's source packet originally
+  omitted those four files. The same tree with `g16.rs` from `gpu/j713` at
+  `3eb265b` reproduces the running module at `/opt/m4-gpu/asahi_m4.ko`.
+- **Seven audio modules:** `audio/j713/kernel`, `bootstrap` and `topology` at
+  the v0.1.0-alpha.1 tag (`ee98743a`), built against `kernel-controller.tar.gz`
+  with `reference-sound-exports.symvers`, `J713_PROFILE=conservative-v1` and
+  `KCFLAGS=-Werror`. Later revisions build a different `snd-soc-j713-group.ko`
+  (the #61 fix). The bootstrap and topology joins are pinned to that commit; the
+  five modules from `audio/j713/kernel` join
+  `j713-audio-kernel-ee98743a.tar.gz` (`c9969e31…`), that tree at the tag, made
+  with `git archive --format=tar ee98743a audio/j713/kernel | gzip -n -9`.
+- **Two video modules:** the module sources and `recipe/BUILD.md` in
+  `build-inputs-final.tar.gz`. `apple-avd.ko` builds against
+  `kernel-decoder.tar.gz`, and `avd-controller.ko` against
+  `kernel-controller.tar.gz`. The AVD driver copy inside the decoder tree is
+  not the shipped source. `recipe/decoder-prepared-to-qualified.patch` records
+  the difference.
+
+All nine were rebuilt on 2026-10-14 with read-only kernel trees and the
+recorded builder images (clang 21.1.8).
+
+`tools/prepare-j713-release.py` scans the finished root and refuses to assemble
+a release in any of these cases:
+
+- an unpackaged ELF file or kernel module is not listed, or its hash differs;
+- a listed binary is no longer present;
+- a named source is missing from the kit or has changed (checked before any
+  output is written, and again on the finished kit);
+- a commit-pinned tree differs in the revision being assembled.
+
+It also refuses `unverified` entries, unless `--allow-unverified-source` is
+given to reassemble alpha.1 itself. `IMAGE.json` then lists those entries in
+`source_correspondence_unverified`. Archives that are not part of the retained
+delivery, like the GPU packet, are supplied with `--join-source`.
 
 ## Kernel and audio build joins
 
@@ -163,14 +264,15 @@ Rust/Cargo 1.93.1, LLVM/Clang 21.1.8 and GCC 15.2.0. Reconstruct those external
 toolchain/sysroot inputs using the retained recipes and package versions; local
 Docker image hashes alone are not public download locations. This source packet
 does not claim a fully self-contained or byte-identical clean rebuild. The
-owner-input pipeline passed on native ARM64 macOS 26.5.1 and 26.5.2 with matching
-output hashes. Reconstructed kernel and userspace build environments have not
+historical filter-generation pipeline passed on native ARM64 macOS 26.5.1
+and 26.5.2 with matching output hashes. The static profile was reproduced on
+macOS 26.6.2 as recorded in its provenance. Reconstructed kernel and userspace build environments have not
 been qualified as a complete clean rebuild.
 
 The assembler `tools/prepare-j713-release.py` records how the retained private
-root was copied, owner-specific payloads removed, freed blocks overwritten,
-new service installed and the existing SMC poweroff handler enabled through the
-device-tree child described in [j713-poweroff.md](j713-poweroff.md).
+root was copied, historical filters replaced by the approved static profile,
+preset consent removed, freed blocks overwritten, the owner-options service
+installed and the existing SMC poweroff handler enabled through the device-tree child described in [j713-poweroff.md](j713-poweroff.md).
 The four native filter identities replace the historical x86_64 calculation's
 identities in the installed audio manifest. The audio registration helper drops
 unrelated global device waits, and both integrity maps record its new identity.

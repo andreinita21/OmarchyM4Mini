@@ -74,9 +74,20 @@ class KernelReleaseTests(unittest.TestCase):
         for name in ('tools/m4-j713-owner-assets.py', 'tools/m4-j713-fir-owner.py',
                      'packaging/Install.command', 'docs/install.md', 'docs/release-limitations.md',
                      'docs/updates.md', 'docs/j713-poweroff.md', 'docs/release-source.md',
-                     'docs/j713-afe-native-action.md', 'audio/j713/owner-fir/README.md'):
+                     'docs/j713-afe-native-action.md', 'audio/j713/owner-fir/README.md',
+                     'audio/j713/owner-fir/.gitattributes', 'audio/j713/owner-fir/licenses/LICENSE.txt'):
             self.write(self.tree, name, ('fixture ' + name).encode())
-        self.write(self.tree, 'audio/j713/owner-fir/manifest.json', b'{"outputs": {}}')
+        self.sources = {name: ('current ' + name).encode()
+                        for name in ('run-transfer.py', 'run-memory.py', 'measure-memory.c')}
+        for name, data in self.sources.items():
+            self.write(self.tree, 'audio/j713/owner-fir/src/' + name, data)
+        self.profile = {'outputs': {}}
+        for index, name in enumerate(release.FIRS):
+            data = bytes([index]) * 16
+            self.write(self.tree, 'audio/j713/filters/' + name, data)
+            self.profile['outputs'][name] = {'size': len(data), 'sha256': digest(data)}
+        self.save_profile()
+        self.write(self.tree, 'packaging/release-source-joins.json', b'{"schema": 1, "binaries": {}}')
         self.boot = {'bootargs': 'console=tty0 dockchannel_hid.m4_power_v2=1'}
         self.parts = {'kernel': self.original_kernel, 'dtb': b'old DTB',
                       'loader': b'preserved loader', 'initramfs': b'preserved initramfs'}
@@ -94,14 +105,8 @@ class KernelReleaseTests(unittest.TestCase):
             archive.writestr('root.ext4', b'old root')
             for name, data in self.parts.items():
                 archive.writestr(self.boot[name]['file'], data)
-        self.owner = self.base / 'owner.tar'
-        with tarfile.open(self.owner, 'w') as archive:
-            info = tarfile.TarInfo('owner-fir/.gitattributes')
-            info.size = 1
-            archive.addfile(info, io.BytesIO(b'\n'))
         self.fixed_inputs = {}
         for name, pin in {
-            'numpy_source': 'df2d5874ff183595a4ba404edd04f6bd9b5505c1d7708573f6a6c17489a67563',
             'cargo_source': 'faf50f21db4b622900bd275441bc321d1a01933afb555e84d1446d38d6027a34',
             'sound_exports': '9f3e2cf8c83045e3a89b94ef7c8526c4dfb10b386d872669819cd8f4f35d4362',
             'reconstruction': '47c144a606c13f218b1bd84d8a1b86d6d9ac281a58a04d0c191e0508221b1e7c',
@@ -109,17 +114,26 @@ class KernelReleaseTests(unittest.TestCase):
             path = self.base / name
             path.write_bytes(name.encode())
             self.fixed_inputs[path] = pin
-        self.fixed_inputs[self.owner] = '4b59c1549e821d79ca4043ade37c02cdbbcc38e5a8eb5202f285b8eb2ff97e07'
         self.fixed_inputs[self.baseline / 'SHA256SUMS'] = release.BASE_SUMS
         self.dtb = self.base / 'poweroff.dtb'
         self.dtb.write_bytes(b'preserved poweroff DTB')
         self.args = SimpleNamespace(source_tree=self.tree, baseline=self.baseline,
-            root_image=self.base / 'retained.ext4', owner_bundle=self.owner,
-            numpy_source=self.base / 'numpy_source', cargo_source=self.base / 'cargo_source',
+            root_image=self.base / 'retained.ext4', cargo_source=self.base / 'cargo_source',
             sound_exports=self.base / 'sound_exports', reconstruction=self.base / 'reconstruction',
             poweroff_dtb=self.dtb, output=self.base / 'output', kernel=self.kernel,
-            kernel_receipt=self.receipt_path)
+            kernel_receipt=self.receipt_path, gpu_module=self.base / 'asahi_m4-fixed.ko')
+        self.gpu_data = b'fixed Air GPU module'.ljust(96, b'\x02')
+        self.args.gpu_module.write_bytes(self.gpu_data)
+        self.gpu_given = []
+        self.untracked = set()
         self.prepared = []
+        self.allowed = []
+        self.repacked = []
+        self.stage1_data = b'\x00fixed stage 1'.ljust(64, b'\x01')
+        self.stage1 = self.base / 'm1n1-stage1-ans1.bin'
+        self.stage1.write_bytes(self.stage1_data)
+        self.write(self.tree, release.STAGE1_PATCH, b'synthetic stage 1 patch')
+        self.committed = {}
 
     def write(self, root, name, data):
         path = root / name
@@ -130,14 +144,18 @@ class KernelReleaseTests(unittest.TestCase):
     def save_receipt(self):
         self.receipt_path.write_text(json.dumps(self.receipt))
 
+    def save_profile(self):
+        self.write(self.tree, 'audio/j713/owner-fir/manifest.json', json.dumps(self.profile).encode())
+
     def git_output(self, command, **kwargs):
         if 'ls-files' in command:
             return b'\0'.join(p.relative_to(self.tree).as_posix().encode()
-                              for p in sorted(self.tree.rglob('*')) if p.is_file()) + b'\0'
+                              for p in sorted(self.tree.rglob('*'))
+                              if p.is_file() and p.relative_to(self.tree).as_posix() not in self.untracked) + b'\0'
         if 'show' in command:
             revision, name = command[-1].split(':', 1)
             self.assertEqual(revision, self.revision)
-            return (self.tree / name).read_bytes()
+            return self.committed.get(name, (self.tree / name).read_bytes())
         self.fail('Unexpected git call: ' + repr(command))
 
     def assemble(self):
@@ -146,12 +164,15 @@ class KernelReleaseTests(unittest.TestCase):
         def sha(path):
             return self.fixed_inputs.get(path) or actual_sha(path)
 
-        def root(source, image, mount, tree, identity, kernel=None):
+        def root(source, image, mount, tree, identity, kernel=None, allow_unverified=False, gpu_module=None):
             self.prepared.append(kernel)
+            self.gpu_given.append(gpu_module)
+            self.allowed.append(allow_unverified)
             image.write_bytes(b'new root')
-            return {'audio': 'a' * 64, 'video': 'v' * 64}
+            return {'audio': 'a' * 64, 'video': 'v' * 64, 'unverified': []}
 
-        def copy_archive(source, destination, *args):
+        def copy_archive(source, destination, *args, **kwargs):
+            self.repacked.append((destination.name, kwargs.get('stage1')))
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(b'retained archive')
 
@@ -159,6 +180,10 @@ class KernelReleaseTests(unittest.TestCase):
              mock.patch.object(release, 'KERNEL_PATCHES', self.patches, create=True), \
              mock.patch.object(release, 'BASE_KERNEL', digest(self.original_kernel), create=True), \
              mock.patch.object(release, 'POWEROFF_DTB', digest(self.dtb.read_bytes())), \
+             mock.patch.object(release, 'STAGE1_ANS1', digest(self.stage1_data)), \
+             mock.patch.object(release, 'STAGE1_BYTES', len(self.stage1_data)), \
+             mock.patch.object(release, 'GPU_FIXED', digest(self.gpu_data)), \
+             mock.patch.object(release, 'GPU_FIXED_BYTES', len(self.gpu_data)), \
              mock.patch.object(release, 'source_revision', return_value=self.revision), \
              mock.patch.object(release, 'sha', side_effect=sha), \
              mock.patch.object(release, 'prepare_root', side_effect=root), \
@@ -167,7 +192,6 @@ class KernelReleaseTests(unittest.TestCase):
              mock.patch.object(release.os, 'geteuid', return_value=0), \
              mock.patch.object(release.sys, 'version_info', (3, 14)), \
              mock.patch.object(release.shutil, 'disk_usage', return_value=SimpleNamespace(free=100 * 1024**3)), \
-             mock.patch.object(release.runpy, 'run_path', return_value={'FIRS': {}}), \
              mock.patch.object(release.subprocess, 'check_output', side_effect=self.git_output):
             release.assemble(self.args)
         return self.args.output / 'delivery'
@@ -193,8 +217,139 @@ class KernelReleaseTests(unittest.TestCase):
         with tarfile.open(delivery / 'source/release-integration.tar.gz') as archive:
             for name in self.patch_names:
                 self.assertEqual(archive.extractfile(name).read(), (self.tree / name).read_bytes())
+            for name in release.FIRS:
+                self.assertEqual(archive.extractfile('audio/j713/filters/' + name).read(),
+                                 (self.tree / 'audio/j713/filters' / name).read_bytes())
         kit = json.loads((delivery / 'KIT.json').read_bytes())
         self.assertEqual(kit['files']['IMAGE.json']['sha256'], digest((delivery / 'IMAGE.json').read_bytes()))
+
+    def test_without_stage1_the_installer_keeps_alpha1s_loader(self):
+        delivery = self.assemble()
+        image = json.loads((delivery / 'IMAGE.json').read_bytes())
+        self.assertEqual(image['stage1'], {'file': 'installer-macos.tar.gz:boot/m1n1.bin',
+                                           'sha256': release.STAGE1_ALPHA1})
+        self.assertEqual(self.repacked[:2], [('installer-macos.tar.gz', None), ('installer-source.tar.gz', None)])
+
+    def test_stage1_reaches_only_the_macos_installer_and_the_image_records_it(self):
+        self.args.stage1 = self.stage1
+        delivery = self.assemble()
+        self.assertEqual(self.repacked[:2], [('installer-macos.tar.gz', self.stage1_data),
+                                             ('installer-source.tar.gz', None)])
+        image = json.loads((delivery / 'IMAGE.json').read_bytes())
+        self.assertEqual(image['stage1']['sha256'], digest(self.stage1_data))
+        self.assertEqual(image['stage1']['replaces_sha256'], release.STAGE1_ALPHA1)
+        self.assertEqual(image['stage1']['source'], release.STAGE1_PATCH)
+        self.assertEqual(image['stage1']['issue'], 82)
+        with tarfile.open(delivery / 'source/release-integration.tar.gz') as archive:
+            self.assertEqual(archive.extractfile(release.STAGE1_PATCH).read(),
+                             (self.tree / release.STAGE1_PATCH).read_bytes())
+
+    def test_unknown_stage1_refuses_before_any_output(self):
+        for data in (self.stage1_data[:-1] + b'\x02', self.stage1_data + b'\x00'):
+            with self.subTest(size=len(data)):
+                self.stage1.write_bytes(data)
+                self.args.stage1 = self.stage1
+                with self.assertRaisesRegex(RuntimeError, 'Unknown stage 1 input'):
+                    self.assemble()
+                self.assertFalse(self.args.output.exists())
+                self.assertEqual(self.prepared, [])
+
+    def test_stage1_patch_must_be_committed(self):
+        self.args.stage1 = self.stage1
+        self.committed[release.STAGE1_PATCH] = b'another patch'
+        with self.assertRaisesRegex(RuntimeError, 'Stage 1 source is not frozen'):
+            self.assemble()
+        self.assertFalse(self.args.output.exists())
+
+    def test_cli_accepts_stage1(self):
+        with mock.patch.object(release, 'assemble') as assemble, \
+             mock.patch.object(release.sys, 'argv', ['prepare', *(f'--{n}=x' for n in (
+                 'source-tree', 'baseline', 'root-image', 'cargo-source', 'sound-exports',
+                 'reconstruction', 'poweroff-dtb', 'gpu-module', 'output')), '--stage1=/k/ans1.bin']):
+            release.main()
+        self.assertEqual(assemble.call_args.args[0].stage1, Path('/k/ans1.bin'))
+
+    def test_fixed_gpu_module_reaches_the_image_and_is_recorded(self):
+        delivery = self.assemble()
+        self.assertEqual(self.gpu_given, [self.gpu_data])
+        image = json.loads((delivery / 'IMAGE.json').read_bytes())
+        self.assertEqual(image['gpu_module'], {
+            'file': 'opt/m4-gpu/asahi_m4.ko', 'sha256': digest(self.gpu_data),
+            'replaces_sha256': release.GPU_ALPHA1, 'source': 'gpu/j713', 'issues': [57, 118],
+            'rollback': 'var/lib/omarchy-m4/gpu-module/alpha1-module.ko'})
+
+    def test_unknown_gpu_module_refuses_before_any_output(self):
+        for data in (self.gpu_data[:-1] + b'\x03', self.gpu_data + b'\x00', b''):
+            with self.subTest(size=len(data)):
+                self.args.gpu_module.write_bytes(data)
+                with self.assertRaisesRegex(RuntimeError, 'Unknown GPU module input'):
+                    self.assemble()
+                self.assertFalse(self.args.output.exists())
+                self.assertEqual(self.prepared, [])
+
+    def test_linked_gpu_module_refuses(self):
+        link = self.base / 'linked.ko'
+        link.symlink_to(self.args.gpu_module)
+        self.args.gpu_module = link
+        with self.assertRaisesRegex(RuntimeError, 'Unknown GPU module input'):
+            self.assemble()
+        self.assertFalse(self.args.output.exists())
+
+    def test_cli_requires_gpu_module(self):
+        argv = ['prepare', *(f'--{n}=x' for n in ('source-tree', 'baseline', 'root-image', 'cargo-source',
+                                                  'sound-exports', 'reconstruction', 'poweroff-dtb', 'output'))]
+        with mock.patch.object(release, 'assemble') as assemble, \
+             mock.patch.object(release.sys, 'argv', argv), \
+             mock.patch('sys.stderr'), self.assertRaises(SystemExit):
+            release.main()
+        assemble.assert_not_called()
+        with mock.patch.object(release, 'assemble') as assemble, \
+             mock.patch.object(release.sys, 'argv', argv + ['--gpu-module=/k/asahi_m4.ko']):
+            release.main()
+        self.assertEqual(assemble.call_args.args[0].gpu_module, Path('/k/asahi_m4.ko'))
+
+    def test_untracked_static_filter_refuses_before_image_preparation(self):
+        self.untracked.add('audio/j713/filters/' + release.FIRS[-1])
+        with self.assertRaisesRegex(RuntimeError, 'Static FIR assets must be tracked'):
+            self.assemble()
+        self.assertEqual(self.prepared, [])
+        self.assertFalse(self.args.output.exists())
+
+    def join(self, archive, pin):
+        joins = {'schema': 1, 'binaries': {'opt/m4-gpu/asahi_m4.ko': {
+            'sha256': 'b' * 64, 'correspondence': 'rebuilt-identical',
+            'sources': [{'archive': 'source/' + archive, 'sha256': pin}]}}}
+        return self.write(self.tree, 'packaging/release-source-joins.json', json.dumps(joins).encode())
+
+    def test_pinned_join_source_reaches_the_kit_and_image_records_the_joins(self):
+        packet = self.write(self.base, 'gpu-air-source.tar.gz', b'GPU source packet')
+        joins = self.join(packet.name, digest(packet.read_bytes()))
+        self.args.join_source = [packet]
+        delivery = self.assemble()
+        self.assertEqual((delivery / 'source' / packet.name).read_bytes(), packet.read_bytes())
+        image = json.loads((delivery / 'IMAGE.json').read_bytes())
+        self.assertEqual(image['source_joins_sha256'], digest(joins.read_bytes()))
+        self.assertEqual(image['source_correspondence_unverified'], [])
+        self.assertEqual(self.allowed, [False])
+
+    def test_a_join_naming_an_absent_source_archive_refuses_before_any_output(self):
+        self.join('gpu-air-source.tar.gz', 'c' * 64)
+        with self.assertRaisesRegex(RuntimeError, 'will not be in the kit for opt/m4-gpu/asahi_m4.ko'):
+            self.assemble()
+        self.assertFalse(self.args.output.exists(), 'refused before root preparation and repacking')
+
+    def test_an_unpinned_join_source_refuses_before_any_output(self):
+        packet = self.write(self.base, 'gpu-air-source.tar.gz', b'another packet')
+        self.join(packet.name, digest(b'GPU source packet'))
+        self.args.join_source = [packet]
+        with self.assertRaisesRegex(RuntimeError, 'not a pinned archive'):
+            self.assemble()
+        self.assertFalse(self.args.output.exists())
+
+    def test_unverified_permission_reaches_root_preparation(self):
+        self.args.allow_unverified_source = True
+        self.assemble()
+        self.assertEqual(self.allowed, [True])
 
     def test_absent_pair_preserves_retained_kernel_and_bootargs(self):
         self.args.kernel = self.args.kernel_receipt = None
@@ -448,8 +603,8 @@ class KernelReleaseTests(unittest.TestCase):
 
     def test_cli_accepts_optional_pair_and_keeps_it_absent_by_default(self):
         args = ['prepare-j713-release.py']
-        for name in ('source-tree', 'baseline', 'root-image', 'owner-bundle', 'numpy-source',
-                     'cargo-source', 'sound-exports', 'reconstruction', 'poweroff-dtb', 'output'):
+        for name in ('source-tree', 'baseline', 'root-image',
+                     'cargo-source', 'sound-exports', 'reconstruction', 'poweroff-dtb', 'gpu-module', 'output'):
             args += ['--' + name, '/fixture/' + name]
         with mock.patch.object(release.sys, 'argv', args), mock.patch.object(release, 'assemble') as assemble:
             release.main()
@@ -460,6 +615,60 @@ class KernelReleaseTests(unittest.TestCase):
             release.main()
         self.assertEqual(assemble.call_args.args[0].kernel, self.kernel)
         self.assertEqual(assemble.call_args.args[0].kernel_receipt, self.receipt_path)
+
+
+class InstallerStage1Tests(unittest.TestCase):
+    SEAMS = ('import system, osenum, stub, diskutil, osinstall, gravity_firmware, m1n1\n'
+             'class Installer:\n    def __init__(self, version):\n        pass\n'
+             '    def a(self):\n        self.ins.collect_firmware(fw_pkg)\n'
+             '    def b(self):\n            self.ins.collect_firmware(pkg)\n')
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.base = Path(temp.name)
+        self.old_loader, self.new_loader = b'alpha.1 stage 1' * 4, b'fixed stage 1!!' * 4
+
+    def installer(self, members, name='installer.tar.gz'):
+        path = self.base / name
+        with tarfile.open(path, 'w:gz') as archive:
+            for member, data in members.items():
+                item = tarfile.TarInfo(member)
+                item.size, item.mode = len(data), 0o755
+                archive.addfile(item, io.BytesIO(data))
+        return path
+
+    def repack(self, source, stage1=None, source_archive=False):
+        output = self.base / ('out-' + str(len(list(self.base.iterdir()))) + '.tar.gz')
+        with mock.patch.object(release, 'STAGE1_ALPHA1', digest(self.old_loader)):
+            release.repack_installer(source, output, b'module', source_archive, stage1=stage1)
+        with tarfile.open(output) as archive:
+            return {item.name: archive.extractfile(item).read() for item in archive if item.isfile()}
+
+    def test_stage1_replaces_only_the_loader(self):
+        source = self.installer({'./main.py': self.SEAMS.encode(), './boot/m1n1.bin': self.old_loader,
+                                 './m1n1.py': b'builder'})
+        before = self.repack(source)
+        after = self.repack(source, stage1=self.new_loader)
+        self.assertEqual(before['./boot/m1n1.bin'], self.old_loader)
+        self.assertEqual(after['./boot/m1n1.bin'], self.new_loader)
+        self.assertEqual({k: v for k, v in after.items() if k != './boot/m1n1.bin'},
+                         {k: v for k, v in before.items() if k != './boot/m1n1.bin'})
+        self.assertIn('j713_owner_assets.py', after)
+
+    def test_unknown_or_missing_installer_loader_refuses(self):
+        for members, message in (
+                ({'./main.py': self.SEAMS.encode(), './boot/m1n1.bin': b'another loader'}, 'Unknown installer stage 1'),
+                ({'./main.py': self.SEAMS.encode()}, 'Missing installer stage 1')):
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(RuntimeError, message):
+                    self.repack(self.installer(members), stage1=self.new_loader)
+
+    def test_source_archive_never_takes_stage1(self):
+        source = self.installer({'src/main.py': self.SEAMS.encode()}, 'source.tar.gz')
+        self.assertIn('src/j713_owner_assets.py', self.repack(source, source_archive=True))
+        with self.assertRaisesRegex(RuntimeError, 'macOS installer only'):
+            self.repack(source, stage1=self.new_loader, source_archive=True)
 
 
 if __name__ == '__main__':
