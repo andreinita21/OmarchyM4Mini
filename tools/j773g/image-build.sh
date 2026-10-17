@@ -19,7 +19,7 @@ CHANNEL=edge
 PLATFORM=aarch64-apple
 PLATFORM_COMPATIBLE=apple,arm-platform   # what the chroot's device tree says; the manifest decides the platform
 KERNEL=linux-gravity-m4
-J773G_PACKAGES=(linux-gravity-m4 m1n1-gravity uboot-gravity omarchy-j773g)
+J773G_PACKAGES=(linux-gravity-m4 m1n1-gravity uboot-gravity omarchy-j773g mesa-gravity-m4 aquamarine)
 PLATFORM_PACKAGES=(mkinitcpio limine limine-snapper-sync limine-mkinitcpio-hook asahi-scripts asahi-fwextract)
 APPLE_AUDIO=(alsa-ucm-conf-asahi asahi-audio)
 BOOTSTRAP=(base sudo btrfs-progs dosfstools e2fsprogs archlinuxarm-keyring asahi-alarm-keyring omarchy-keyring)
@@ -122,7 +122,7 @@ write_build_pacman_config() {
     ln -f "$f" "$work/j773g-repo/" 2>/dev/null || cp "$f" "$work/j773g-repo/"
     n=$((n + 1))
   done
-  ((n >= 4)) || fail "fewer than 4 packages in $pkgs (need ${J773G_PACKAGES[*]})"
+  ((n >= ${#J773G_PACKAGES[@]})) || fail "fewer than ${#J773G_PACKAGES[@]} packages in $pkgs (need ${J773G_PACKAGES[*]})"
   repo-add -q "$work/j773g-repo/j773g.db.tar.gz" "$work"/j773g-repo/*.pkg.tar.* >>"$logs/build.log" 2>&1 || fail "repo-add failed"
   cat >"$work/build.conf" <<EOF
 [options]
@@ -412,20 +412,22 @@ stage_owner_provisioning() {
 }
 
 build_boot() {
-  # No GPU yet: the kernel's asahi_m4 driver binds the M4 GPU, but Mesa has no
-  # working userspace for it, so Hyprland rendered through its render node and
-  # every DRM_IOCTL_ASAHI_SUBMIT failed: a black greeter on a lit, connected
-  # HDMI (2026-10-17). Keep the module out until rung g8-gpu passes; Mesa then
-  # falls back to llvmpipe on the display controller's card.
-  install -d "$target/etc/modprobe.d"
-  cat >"$target/etc/modprobe.d/90-j773g-no-gpu.conf" <<'EOF'
-# J773g: the M4 GPU driver (asahi_m4) loads but Mesa has no working userspace
-# for it yet: every DRM_IOCTL_ASAHI_SUBMIT fails and Hyprland draws nothing
-# (black greeter, 2026-10-17). Keep the GPU away until rung g8-gpu passes;
-# rendering falls back to llvmpipe on the display controller.
-blacklist asahi_m4
-install asahi_m4 /bin/false
-EOF
+  # M4 GPU (2026-10-17): the kernel's asahi_m4 + GravityLinux's Mesa
+  # (mesa-gravity-m4, /opt/mesa-gravity, ahead of the system Mesa through
+  # ld.so.conf.d) render the greeter, the session and Wayland clients.
+  # Stock Mesa treats the G16 as G14 and its submits fail (black greeter).
+  # AQ_NO_RENDERD_FALLBACK (aquamarine 0.15.1-3, packaging/j773g) keeps
+  # Hyprland on the display's KMS fd so Mesa's kmsro renders for it: the
+  # driver cannot render into buffers imported from the display.
+  # Gravity's launcher settings: GLES 3.0 / GLSL 300, no compression.
+  install -d "$target/etc/ld.so.conf.d" "$target/etc/modules-load.d"
+  echo /opt/mesa-gravity/lib >"$target/etc/ld.so.conf.d/00-mesa-gravity-m4.conf"
+  in_target ldconfig
+  printf '# J773g: M4 GPU driver early, before the display manager\nasahi_m4\n' >"$target/etc/modules-load.d/j773g-gpu.conf"
+  local kv
+  for kv in ASAHI_MESA_DEBUG=nocompress MESA_GLES_VERSION_OVERRIDE=3.0 MESA_GLSL_VERSION_OVERRIDE=300 AQ_NO_RENDERD_FALLBACK=1; do
+    grep -q "^${kv%%=*}=" "$target/etc/environment" 2>/dev/null || echo "$kv" >>"$target/etc/environment"
+  done
   # Debugging a Mac with no console is blind without a journal that survives
   # the reboot, and the ladder's SSH access needs the firewall open.
   install -d "$target/etc/systemd/journald.conf.d"

@@ -1,0 +1,9 @@
+# Environment for programs that should render through Gravity's M4 Mesa
+# (mesa-gravity-m4). Shell syntax; UWSM env files and `. /opt/mesa-gravity/env`
+# both read it. Values from Gravity's README.apple9-es3.md.
+export LD_LIBRARY_PATH=/opt/mesa-gravity/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+export LIBGL_DRIVERS_PATH=/opt/mesa-gravity/lib/dri
+export GBM_BACKENDS_PATH=/opt/mesa-gravity/lib/gbm
+export ASAHI_MESA_DEBUG=nocompress
+export MESA_GLES_VERSION_OVERRIDE=3.0
+export MESA_GLSL_VERSION_OVERRIDE=300

@@ -7,6 +7,7 @@
 #   tools/j773g-pkg.sh image                 build the ALARM container image
 #   tools/j773g-pkg.sh <pkg>...              makepkg the named packages
 #   tools/j773g-pkg.sh all                   m1n1-gravity uboot-gravity linux-gravity-m4 omarchy-j773g
+#                                            mesa-gravity-m4 aquamarine-j773g
 #   tools/j773g-pkg.sh shell                 interactive shell in the container
 #
 # Output: build/j773g/pkgs/*.pkg.tar.zst. Source tarballs are cached in
@@ -69,7 +70,7 @@ case ${1:-} in
   image) build_image ;;
   shell) run bash ;;
   all)
-    for p in m1n1-gravity uboot-gravity linux-gravity-m4 omarchy-j773g; do makepkg_one "$p"; done ;;
+    for p in m1n1-gravity uboot-gravity linux-gravity-m4 omarchy-j773g mesa-gravity-m4 aquamarine-j773g; do makepkg_one "$p"; done ;;
   "" | -h | --help) sed -n 2,16p "$0" ;;
   *) for p in "$@"; do makepkg_one "$p"; done ;;
 esac

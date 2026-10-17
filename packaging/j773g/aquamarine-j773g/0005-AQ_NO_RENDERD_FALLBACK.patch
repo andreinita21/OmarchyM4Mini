@@ -1,0 +1,33 @@
+--- a/src/backend/Session.cpp
++++ b/src/backend/Session.cpp
+@@ -235,7 +235,11 @@
+     // Refs hyprwm/aquamarine#260 (M1/M2 reports), PR #237 (unconditional
+     // for non-standard buses, reverted by 8ed71bb), commit 2455556b
+     // (last known-good on M-series Asahi per the #260 thread).
+-    if (renderNodeFd < 0) {
++    //
++    // AQ_NO_RENDERD_FALLBACK=1 keeps the KMS fd instead: Mesa's kmsro then
++    // renders for the display device itself. The M4 Mac mini needs this; its
++    // GPU driver does not render into buffers imported from the display.
++    if (renderNodeFd < 0 && !envEnabled("AQ_NO_RENDERD_FALLBACK")) {
+         int              renderDCount = 0;
+         udev_list_entry* countEntry   = nullptr;
+         udev_list_entry_foreach(countEntry, devices) {
+--- a/src/backend/drm/DRM.cpp
++++ b/src/backend/drm/DRM.cpp
+@@ -878,6 +878,15 @@
+     rendererState.renderer = CDRMRenderer::attempt(backend.lock(), gpu->renderNodeFd >= 0 ? gpu->renderNodeFd : gpu->fd);
+ 
+     if (!rendererState.renderer) {
++        // A primary device never blits (shouldBlit()). With the render node
++        // fallback off (Session.cpp) its KMS fd may have no EGL device; stop
++        // asking for one instead of failing every commit.
++        if (!primary && envEnabled("AQ_NO_RENDERD_FALLBACK")) {
++            backend->log(AQ_LOG_WARNING, "drm: initMgpu: no renderer on the primary device, not needed without blitting");
++            rendererState.allocator.reset();
++            rendererRequired = false;
++            return true;
++        }
+         backend->log(AQ_LOG_ERROR, "drm: initMgpu: no renderer");
+         return false;
+     }

@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: MIT
+# Mesa for the M4 GPU (G16, T8132): GravityLinux's Mesa fork at the pin
+# GravityLinux/packages sources.json ships (tag gravity-alpha-02). Stock Arch
+# Mesa maps every gpu_generation >= 14 to G14 and its submits fail on the
+# M4 ("DRM_IOCTL_ASAHI_SUBMIT render failed"); Gravity's fork has the Apple9
+# (G16) path and the same asahi UAPI header as the gravity-m4 kernel's
+# asahi_m4 driver.
+#
+# Installed beside the system Mesa under /opt/mesa-gravity (no glvnd, like
+# upstream Omarchy-M4-Native's /opt/m4-mesa), so it is used only where a
+# session or program asks for it (/opt/mesa-gravity/env) and stock Mesa stays
+# the fallback. Gravity calls it development quality: OpenGL ES 3.0, no
+# transform feedback, ASAHI_MESA_DEBUG=nocompress.
+# Meson options follow Gravity's mesa.spec, trimmed to the M4's drivers.
+
+pkgname=mesa-gravity-m4
+_commit=87ac51d411f0e58a9433567ec2666f457be89e1d
+pkgver=26.3.0_devel.gravity.alpha02
+pkgrel=2
+pkgdesc='GravityLinux Mesa (M4 / G16 asahi driver) in /opt/mesa-gravity'
+arch=('aarch64')
+url='https://github.com/GravityLinux/mesa'
+license=('MIT AND BSD-3-Clause AND SGI-B-2.0')
+depends=(
+  expat libdrm libelf libx11 libxcb libxext libxfixes libxshmfence libxxf86vm
+  libxrandr llvm-libs spirv-tools wayland zlib zstd
+)
+makedepends=(
+  clang cmake glslang libclc llvm meson python-mako python-packaging
+  python-ply python-yaml spirv-llvm-translator wayland-protocols
+  xorgproto
+)
+options=('!lto')
+source=("mesa-gravity-${_commit}.tar.gz::https://github.com/GravityLinux/mesa/archive/${_commit}.tar.gz"
+        env
+        wayland-sole-render-node.patch)
+sha256sums=('1195f212bcf5816b8b893113b0b5dc578ce744d420856b6ad4f42008889e231e'
+            'SKIP'
+            'SKIP')
+
+prepare() {
+  # Wayland clients: when the compositor's main device is display-only (no
+  # render node, the mini's apple-drm), use the system's only render node
+  # instead of falling back to llvmpipe.
+  patch -d "mesa-${_commit}" -p1 < wayland-sole-render-node.patch
+}
+
+_prefix=/opt/mesa-gravity
+
+build() {
+  # Plain meson setup: arch-meson's auto_features=enabled turns on
+  # Windows-only features (gallium-mediafoundation) and fails.
+  meson setup "mesa-${_commit}" build \
+    --buildtype=release \
+    --prefix=$_prefix \
+    --libdir=lib \
+    --sysconfdir=/etc \
+    --datadir=$_prefix/share \
+    -D b_ndebug=true \
+    -D platforms=wayland,x11 \
+    -D gallium-drivers=asahi,llvmpipe,softpipe \
+    -D vulkan-drivers= \
+    -D vulkan-layers= \
+    -D glvnd=disabled \
+    -D egl=enabled \
+    -D gbm=enabled \
+    -D gles1=disabled \
+    -D gles2=enabled \
+    -D opengl=true \
+    -D glx=dri \
+    -D llvm=enabled \
+    -D shared-llvm=enabled \
+    -D gallium-rusticl=false \
+    -D gallium-va=disabled \
+    -D video-codecs= \
+    -D teflon=false \
+    -D valgrind=disabled \
+    -D libunwind=disabled \
+    -D lmsensors=disabled \
+    -D build-tests=false \
+    -D microsoft-clc=disabled \
+    -D tools=
+  meson compile -C build
+}
+
+package() {
+  meson install -C build --destdir "$pkgdir"
+  install -Dm644 env "$pkgdir$_prefix/env"
+  install -Dm644 "mesa-${_commit}/docs/license.rst" "$pkgdir/usr/share/licenses/$pkgname/license.rst"
+  # The system Mesa owns /etc and drirc; keep this one self-contained.
+  rm -rf "$pkgdir/etc" "$pkgdir/usr/share/drirc.d"
+}
