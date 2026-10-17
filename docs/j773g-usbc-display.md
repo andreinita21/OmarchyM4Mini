@@ -68,3 +68,19 @@ Monitor on back left (port1) with a plain USB-C to DP cable, keyboard on
 another port: capture dmesg, `/sys/class/typec/port1*`, the tps6598x trace
 events — does the controller enter DP mode, which pin assignment, does HPD
 toggle. Putting a port in DP mode drops its USB3.
+
+## Plug test result (2026-10-17 23:57, kernel 7.1.13-1-7)
+
+Odyssey G8 OLED 34" on the **back right** port (usb-pd@8, atcphy3,
+typec/port2) with a plain USB-C to DP 1.4 cable. tps6598x trace events
+(`/sys/kernel/tracing/events/tps6598x`):
+
+    cd321x_data_status: DATA_CONNECTION|DATA_UPSIDE_DOWN|USB2_CONNECTION|DP_CONNECTION|0x80000000, DP pinout E
+    cd321x_data_status: DATA_CONNECTION|DATA_UPSIDE_DOWN|USB2_CONNECTION|DP_CONNECTION|HPD_LEVEL|0x80000000, DP pinout E
+
+The controller enters DP alt-mode on its own, picks **pin assignment E (all
+four lanes to DP)** — what 3440x1440 at 175 Hz needs — and the monitor raises
+HPD. Cable orientation: upside down. Partner identity: id_header 0xc3249b00.
+Nothing else reacts: no ATC PHY, crossbar or DCP messages; `card1-Unknown-2/3`
+stay disconnected. Back left (port1) was busy with the keyboard receiver,
+back middle (port0) with the proxy cable.
