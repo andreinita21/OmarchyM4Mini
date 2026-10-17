@@ -677,3 +677,33 @@ failed boot iBoot falls back to macOS, from where the ESP (disk0s4,
 - Security: UFW logs SYNs from public addresses to 5900 on .95, so the
   router (192.168.100.1) forwards to the mini (DMZ or port forward); SSH has
   password login on both Linux and macOS. Andrei will check the router.
+- GPU: WORKS (2026-10-17 ~22:50), verified across a reboot. Greeter,
+  Hyprland session and Wayland clients render on "Apple M4 (G16G B1)"
+  (GLES 3.0); glmark2-es2-wayland correct in a window (score ~1850-2200),
+  glmark2-es2-drm ~3400; no GPU faults. Pieces:
+  - asahi_m4 (gravity-m4 kernel) accepts mBoot-18000.161.10; m1n1 fills
+    apple,m4-core-mask 0x3ff, max-power 37237 mW, freq/voltage tables.
+  - mesa-gravity-m4 (GravityLinux/mesa gravity-alpha-02) in /opt/mesa-gravity,
+    first through /etc/ld.so.conf.d/00-mesa-gravity-m4.conf. /etc/environment:
+    ASAHI_MESA_DEBUG=nocompress MESA_GLES_VERSION_OVERRIDE=3.0
+    MESA_GLSL_VERSION_OVERRIDE=300 AQ_NO_RENDERD_FALLBACK=1.
+  - Hyprland on the render node (aquamarine's "sole renderD" fallback) into
+    buffers allocated on apple-drm: black screen with cursor, even a red
+    background never reached HDMI (grim screenshots read back white). Through
+    the KMS fd (kmsro, like glmark2-es2-drm) it works: aquamarine 0.15.1-3
+    adds AQ_NO_RENDERD_FALLBACK (packaging/j773g/aquamarine-j773g).
+  - Wayland clients then got llvmpipe (main device card1 has no render
+    node): mesa-gravity-m4 pkgrel 2 falls back to the only render node.
+    Arch's eglinfo/es2gears carry RUNPATH=/usr/lib and bypass ld.so.conf
+    (test with LD_LIBRARY_PATH=/opt/mesa-gravity/lib).
+  - Loading asahi_m4 early (udev coldplug / modules-load.d) hung the boot
+    with ten cores (no journal). j773g-gpu.service loads it by name after
+    udev settle and card1, before sddm (7.0 s on the mini); modprobe.d keeps
+    only "blacklist asahi_m4" so udev does not autoload it.
+  - Both packages are pinned in /etc/pacman.conf IgnorePkg on the mini (and
+    in the image): an aquamarine without the patch brings the black screen
+    back. A future upstream aquamarine/Hyprland update needs the patch
+    carried (or upstreamed as an env switch).
+  - Backups: /root/j773g-backup/ (pacman.conf, environment, old blacklist).
+- My helper sudo() { echo 2006 | sudo -S ...; } plus `| sudo tee` writes
+  EMPTY files (the password line replaces the pipe); use sudo sh -c.

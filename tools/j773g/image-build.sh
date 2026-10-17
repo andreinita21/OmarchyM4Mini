@@ -420,10 +420,34 @@ build_boot() {
   # Hyprland on the display's KMS fd so Mesa's kmsro renders for it: the
   # driver cannot render into buffers imported from the display.
   # Gravity's launcher settings: GLES 3.0 / GLSL 300, no compression.
-  install -d "$target/etc/ld.so.conf.d" "$target/etc/modules-load.d"
+  # asahi_m4 must not load early (udev coldplug, modules-load.d): next to the
+  # display coprocessor's bring-up the boot hangs with all ten cores up. Only
+  # autoloading is blacklisted; j773g-gpu.service loads it by name once udev
+  # has settled and card1 exists, before the display manager (2026-10-17).
+  install -d "$target/etc/ld.so.conf.d" "$target/etc/modprobe.d" "$target/etc/systemd/system/graphical.target.wants"
   echo /opt/mesa-gravity/lib >"$target/etc/ld.so.conf.d/00-mesa-gravity-m4.conf"
   in_target ldconfig
-  printf '# J773g: M4 GPU driver early, before the display manager\nasahi_m4\n' >"$target/etc/modules-load.d/j773g-gpu.conf"
+  printf '# J773g: asahi_m4 is loaded by j773g-gpu.service, not autoloaded.\nblacklist asahi_m4\n' >"$target/etc/modprobe.d/90-j773g-gpu.conf"
+  cat >"$target/etc/systemd/system/j773g-gpu.service" <<'EOF'
+[Unit]
+Description=J773g: load the M4 GPU driver (asahi_m4) before the display manager
+After=systemd-udev-settle.service systemd-udev-trigger.service systemd-modules-load.service
+Wants=systemd-udev-settle.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/bin/udevadm settle --timeout=30
+ExecStartPre=/usr/bin/udevadm wait --timeout=20 /dev/dri/card1
+ExecStart=/usr/bin/modprobe asahi_m4
+ExecStartPost=/usr/bin/udevadm wait --timeout=20 /dev/dri/renderD128
+TimeoutStartSec=90
+
+[Install]
+WantedBy=graphical.target
+EOF
+  ln -sfn /etc/systemd/system/j773g-gpu.service "$target/etc/systemd/system/graphical.target.wants/j773g-gpu.service"
   local kv
   for kv in ASAHI_MESA_DEBUG=nocompress MESA_GLES_VERSION_OVERRIDE=3.0 MESA_GLSL_VERSION_OVERRIDE=300 AQ_NO_RENDERD_FALLBACK=1; do
     grep -q "^${kv%%=*}=" "$target/etc/environment" 2>/dev/null || echo "$kv" >>"$target/etc/environment"
