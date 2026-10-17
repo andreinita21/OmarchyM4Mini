@@ -52,3 +52,40 @@ userspace `speakersafetyd`:
 
 Until then, the only audio worth testing is HDMI audio (`DRM_APPLE_AUDIO`),
 which goes to the display, not the internal speaker.
+
+## Checklist run (2026-10-17, linux-gravity-m4 pkgrel 6)
+
+1. **Tuning check.** macOS 27.0.1 on the mini has `/System/Library/Audio/
+   Tunings/AID3..AID48`; the AID number is not in the IORegistry under an
+   obvious name (`speaker-protection = 0`, `speaker-config = 000f0002` on
+   `audio-speaker@38`, `audio-control,sn012776`), and `ADM/config.plist` is
+   empty. Every AID's `builtin_speaker_out_general.austrip` was decoded with
+   speakersafetyd's `docs/audump.py` (its parameter dump goes to stderr).
+   Active profile ("speakerType A", channel assignment all):
+
+   | | AID36 = AID48 | older 1-speaker desktops (AID6/10/12/25/26/32/33/47) | Gravity driver |
+   |---|---|---|---|
+   | R coil / magnet (°C/W) | 40 / 60 | 40 / 60 | 40 / 60 |
+   | tau coil / magnet (s) | 3.4 / 210 | 3.7 / 250 | 3.4 / 210 |
+   | ambient, limit, headroom (°C) | 50, 140, 40 | 50, 140, 40 | 50, 140, hard 150, stall 180 |
+   | Re (Ω) | 4.6 | 4.6 | assumes 4.0 |
+   | V at full scale | 11.9 | 15.87 | assumes 17 |
+
+   AID36 and AID48 carry the same speaker data, so which of the two this Mac
+   uses does not matter; Gravity's constants equal them, and its electrical
+   assumptions are stricter even than the older family's.
+2. Ceiling and margin unchanged: `ceiling_dvc` 20 (−10 dB), 200 %. The driver
+   logs "ceiling -10.0 dB, 14451 mW peak, 900 mW continuous, ramp to
+   -12.5 dB". The model starts warm (t_limit − t_window − 1 °C coil) after a
+   boot, by design.
+3. First test: 10 s pink noise, −30.3 dBFS RMS, peaks capped at −20 dBFS,
+   S24_LE mono 48 kHz straight to `hw:T8132Speaker`. Before: running=0,
+   faulted=0, coil 83.0 °C (cooling from the warm start), hardware_dvc 200
+   (muted). During: running=1, hardware_dvc 20, faulted=0, stalls=0, coil
+   82.3 °C. After: running=0, faulted=0, coil 81.5 °C, hardware_dvc 200.
+   Andrei heard a clean hiss from the internal speaker.
+4. This entry. Speaker autoload enabled after it (the temporary
+   `/etc/modprobe.d/91-j773g-speaker-hold.conf` removed).
+
+Asahi's macaudio stays off; Omarchy's speakersafetyd has no J773g config and
+is not used (the protection is in the kernel driver).
