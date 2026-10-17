@@ -8,7 +8,7 @@
 
 _gravityver=7.1.13
 _gravityrel=1
-pkgrel=6
+pkgrel=7
 
 # GravityLinux/linux branch gravity-m4, hardware-tested on J773g (PLAN.md §3).
 _commit=4fc326f6c25ccceb7515e2635c22e01fde5d3bac
@@ -32,8 +32,12 @@ source=(
   j773g.fragment
   rust-toolchain.toml
   t8132-j773g-pmu.dtsi
+  t8132-j773g-headphones.dtsi
+  j773g-headphones.patch
 )
 sha256sums=('045c64540fa4210394c899cad6320c5bf9090a66919938d986aeaad0033946e8'
+            'SKIP'
+            'SKIP'
             'SKIP'
             'SKIP'
             'SKIP'
@@ -61,6 +65,16 @@ prepare() {
   cp ../t8132-j773g-pmu.dtsi arch/arm64/boot/dts/apple/
   grep -q t8132-j773g-pmu.dtsi arch/arm64/boot/dts/apple/t8132-j773g.dts ||
     echo '#include "t8132-j773g-pmu.dtsi"' >> arch/arm64/boot/dts/apple/t8132-j773g.dts
+
+  # 3.5 mm jack: the CS42L84 on i2c1 and a cluster-2 card driver ported from
+  # Omarchy-M4-Native's J713 headphones (same T8132 MCA cluster 2, ADMAC 4/5
+  # and codec wiring on the mini). Its own card, beside the protected
+  # speaker card; it never touches the speaker amp.
+  echo "Adding the J773g headphone jack (CS42L84, MCA cluster 2)..."
+  patch -Np1 < ../j773g-headphones.patch
+  cp ../t8132-j773g-headphones.dtsi arch/arm64/boot/dts/apple/
+  grep -q t8132-j773g-headphones.dtsi arch/arm64/boot/dts/apple/t8132-j773g.dts ||
+    echo '#include "t8132-j773g-headphones.dtsi"' >> arch/arm64/boot/dts/apple/t8132-j773g.dts
 
   echo "Creating build directories..."
   mkdir -p build/base

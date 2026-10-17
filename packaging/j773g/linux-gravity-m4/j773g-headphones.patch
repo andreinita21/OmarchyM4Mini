@@ -1,0 +1,1340 @@
+--- a/sound/soc/apple/Kconfig
++++ b/sound/soc/apple/Kconfig
+@@ -37,6 +37,19 @@
+ 	  and it also enables the required SoC and codec drivers for overall
+ 	  sound support on these machines.
+ 
++config SND_SOC_APPLE_T8132_HEADPHONES
++	tristate "Experimental T8132 Mac mini headphone jack"
++	depends on ARCH_APPLE && ARM64_16K_PAGES && I2C && OF
++	depends on DMADEVICES
++	select SND_PCM
++	select SND_SOC_CS42L84
++	select SND_SOC_GENERIC_DMAENGINE_PCM
++	select APPLE_ADMAC
++	help
++	  The J773g 3.5 mm jack (CS42L84) on MCA cluster 2 as its own card,
++	  beside the internal-speaker card on cluster 0: headphone playback
++	  and headset-mic capture. Ported from Omarchy-M4-Native's J713 card.
++
+ config SND_SOC_APPLE_T8132_SPEAKER
+ 	tristate "Experimental T8132 Mac mini internal speaker"
+ 	depends on ARCH_APPLE && ARM64_16K_PAGES && I2C && GPIOLIB && OF
+--- a/sound/soc/apple/Makefile
++++ b/sound/soc/apple/Makefile
+@@ -12,3 +12,4 @@
+ obj-$(CONFIG_SND_SOC_APPLE_MACAUDIO)	+= snd-soc-macaudio.o
+ 
+ obj-$(CONFIG_SND_SOC_APPLE_T8132_SPEAKER) += t8132/
++obj-$(CONFIG_SND_SOC_APPLE_T8132_HEADPHONES) += t8132/
+--- a/sound/soc/apple/t8132/Makefile
++++ b/sound/soc/apple/t8132/Makefile
+@@ -1,3 +1,5 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ obj-$(CONFIG_SND_SOC_APPLE_T8132_SPEAKER) += snd-t8132-speaker.o
+ snd-t8132-speaker-y := pcm.o amplifier.o
++obj-$(CONFIG_SND_SOC_APPLE_T8132_HEADPHONES) += snd-t8132-headphones.o
++snd-t8132-headphones-y := headphones.o
+--- a/sound/soc/apple/t8132/headphones.c
++++ b/sound/soc/apple/t8132/headphones.c
+@@ -0,0 +1,864 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * J713 headphone jack card "J773gHeadphones": MCA cluster 2 <-> I2S port 2 <->
++ * CS42L84, beside the speaker card (cluster 0), which keeps running.
++ * Playback: TX serializer 2, ADMAC channel 4. Capture (the headset mic): RX
++ * serializer 2, the RX half of DMA adapter 2, ADMAC channel 5.
++ *
++ * All register values, the shared-register contract and the two-direction
++ * policy (staging, the prepare decision) live in j713_hp_plan.h. This file
++ * executes those plans through one executor (hp_apply) and one checker
++ * (hp_verify), and adds the only other accesses: the TX_ACTIVE/RX_ACTIVE
++ * reads in the guard, the mck2 mux switch, the serializer reset and the
++ * channel 5 idle read, all inside the stream's own windows apart from the
++ * status reads.
++ *
++ * One mutex, h->lock, serializes prepare, trigger, hw_free and unbind of
++ * both streams. Under it, h->prepared holds BIT(stream) from prepare to
++ * hw_free, and h->active while the stream's staged enable is on. The link
++ * is nonatomic, so the trigger may sleep.
++ *
++ * Callbacks:
++ *  - probe: map, attach the power domains, request the "tx" and "rx" DMA
++ *    channels (rx must be channel 5, whose registers this driver writes),
++ *    record the boot values of mck2 and port 2. No register writes.
++ *  - hw_params: format check only (WirePlumber probes cards by opening
++ *    them with real hw_params/hw_free cycles). Capture never calls
++ *    dmaengine_slave_config(): see hp_pcm_hw_params().
++ *  - prepare: guard the stream's own enable. Capture then writes and
++ *    verifies channel 5's BUS_WIDTH and FIFOCTL. j713_hp_prepare() decides
++ *    the rest: a clocked cluster that matches the recipe is verified, not
++ *    rewritten (timing registers are written only while the cluster's
++ *    clocks are off, the speaker driver's j713_gates_off rule); otherwise,
++ *    with the other direction neither running nor prepared on a clocked
++ *    cluster, guard it, tear down, mck2 to nco3, PROGRAM and PORT_OPEN.
++ *    Last, the stream's serializer reset (never RX while TX runs).
++ *  - trigger: j713_hp_stage(), the only staged-enable writes.
++ *  - hw_free: while the other direction is prepared or running, only this
++ *    stream's guard. The last one runs hp_quiesce(), the one cleanup owner
++ *    (also for unbind): TEARDOWN only once both TX_ACTIVE and RX_ACTIVE bit
++ *    2 read clear. If either cannot be stopped it leaves cluster 2 clocked,
++ *    and unbind then also keeps mck2 on nco3 and the power domains linked
++ *    (until power-off) rather than pull the clock or power from under an
++ *    enabled serializer. Otherwise unbind puts mck2 back to its boot source
++ *    and drops the domains.
++ */
++#include <linux/bitfield.h>
++#include <linux/debugfs.h>
++#include <linux/delay.h>
++#include <linux/dma-mapping.h>
++#include <linux/dmaengine.h>
++#include <linux/io.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/pm_domain.h>
++#include <linux/seq_file.h>
++#include <sound/dmaengine_pcm.h>
++#include <sound/jack.h>
++#include <sound/pcm_params.h>
++#include <sound/soc.h>
++
++#include "j713_hp_plan.h"
++
++static_assert(J713_HP_TX == SNDRV_PCM_STREAM_PLAYBACK &&
++	      J713_HP_RX == SNDRV_PCM_STREAM_CAPTURE);
++
++/*
++ * PMGR clock mux feeding MCA clock generator 2 ("mck2" in the AOP
++ * firmware). Source 10 is nco3 at 3.072 MHz, the clock macOS uses for this
++ * stream; Linux boots with every mux on source 0.
++ */
++#define PMGR_MCK2		0x388240040ULL
++#define  MCK_PENDING		BIT(30)
++#define  MCK_SRC_SEL		GENMASK(27, 24)
++#define  MCK_SRC_NCO3		10
++#define HP_BCLK			3072000
++#define HP_RATE			48000
++
++/* Codec DAC volume index 256 = 0 dB (-128..+12 dB in 0.5 dB steps). */
++#define HP_VOLUME_MAX		256
++
++struct hp {
++	struct device *dev;
++	void __iomem *mca;
++	void __iomem *mck;
++	void __iomem *rxdma;		/* ADMAC channel 5's registers */
++	u32 mck_boot;
++	u32 port_boot[3];
++	struct device *pd[3];
++	struct device_link *pd_link[3];
++	struct dma_chan *chan[2];	/* by stream: "tx" (4), "rx" (5) */
++	struct mutex lock;
++	u32 prepared;
++	u32 active;
++	struct device_node *codec_np;
++	struct snd_soc_card card;
++	struct snd_soc_dai_link link;
++	struct snd_soc_dai_link_component comps[3];
++	struct snd_soc_jack jack;
++	struct dentry *dbg;
++};
++
++static struct hp *hp_from(struct snd_pcm_substream *s)
++{
++	return snd_soc_card_get_drvdata(snd_soc_substream_to_rtd(s)->card);
++}
++
++static u32 rd(struct hp *h, u32 off)
++{
++	return readl(h->mca + off);
++}
++
++static void wr(struct hp *h, u32 off, u32 val)
++{
++	writel(val, h->mca + off);
++}
++
++/* The one executor: every write a plan describes, in order. */
++static void hp_apply(void __iomem *base, const struct j713_hp_plan *p)
++{
++	u32 i;
++
++	for (i = 0; i < p->count; i++) {
++		const struct j713_hp_write *w = &p->writes[i];
++		u32 val = w->value;
++
++		if (w->mask != ~0U)
++			val |= readl(base + w->offset) & ~w->mask;
++		writel(val, base + w->offset);
++	}
++}
++
++/*
++ * Count the registers that do not hold what the plan's final writes put
++ * there; print every checked write to m if given.
++ */
++static int hp_verify(void __iomem *base, const struct j713_hp_plan *p,
++		     const char *name, struct seq_file *m)
++{
++	int bad = 0;
++	u32 i;
++
++	for (i = 0; i < p->count; i++) {
++		const struct j713_hp_write *w = &p->writes[i];
++		u32 live;
++		bool ok;
++
++		if (!j713_hp_final(p, i) || j713_hp_write_only(w->offset))
++			continue;
++		live = readl(base + w->offset);
++		ok = (live & w->mask) == w->value;
++		bad += !ok;
++		if (m)
++			seq_printf(m, "  %-9s +%04x mask %08x want %08x live %08x%s\n",
++				   name, w->offset, w->mask, w->value, live,
++				   ok ? "" : "  MISMATCH");
++	}
++	return bad;
++}
++
++static void hp_run(struct hp *h, enum j713_hp_step step)
++{
++	struct j713_hp_plan p;
++
++	if (!WARN_ON(j713_hp_plan(step, h->port_boot, &p)))
++		hp_apply(h->mca, &p);
++}
++
++static int hp_check(struct hp *h, enum j713_hp_step step, struct seq_file *m)
++{
++	struct j713_hp_plan p;
++
++	if (WARN_ON(j713_hp_plan(step, h->port_boot, &p)))
++		return 1;
++	return hp_verify(h->mca, &p, j713_hp_step_name(step), m);
++}
++
++/* Stage one direction's enable on or off; h->lock held. */
++static void hp_stage(struct hp *h, enum j713_hp_dir dir, bool on)
++{
++	struct j713_hp_plan p;
++
++	h->active = j713_hp_stage(h->active, dir, on, &p);
++	hp_apply(h->mca, &p);
++}
++
++static bool hp_clocked(struct hp *h)
++{
++	return (rd(h, J713_HP_MCLK_STATUS) | rd(h, J713_HP_SYNC_STATUS)) & J713_HP_EN;
++}
++
++/* The trigger is frame-aligned, so allow a few frames for the status to follow. */
++static int hp_wait_idle(struct hp *h, enum j713_hp_dir dir)
++{
++	int i;
++
++	for (i = 0; i < 1000; i++) {
++		if (!(rd(h, j713_hp_dirs[dir].active) & J713_HP_BIT))
++			return 0;
++		udelay(1);
++	}
++	return -EBUSY;
++}
++
++/* No cluster-2 timing write unless dir's status bit 2 reads clear. */
++static int hp_guard(struct hp *h, enum j713_hp_dir dir, const char *what)
++{
++	const struct j713_hp_direction *d = &j713_hp_dirs[dir];
++
++	if (!hp_wait_idle(h, dir))
++		return 0;
++	dev_warn(h->dev, "%s: %s_ACTIVE %#x still has bit 2, stopping again\n",
++		 what, d->name, rd(h, d->active));
++	hp_stage(h, dir, false);
++	if (!hp_wait_idle(h, dir))
++		return 0;
++	dev_err(h->dev, "%s: %s_ACTIVE %#x: %s still enabled, refusing\n",
++		what, d->name, rd(h, d->active), d->name);
++	return -EBUSY;
++}
++
++static int hp_mck_settle(struct hp *h)
++{
++	int i;
++
++	for (i = 0; i < 1000; i++) {
++		if (!(readl(h->mck) & MCK_PENDING))
++			return 0;
++		udelay(1);
++	}
++	return -ETIMEDOUT;
++}
++
++/* Only while the cluster is idle; the mux is glitch-free and reports PENDING. */
++static int hp_set_mck(struct hp *h)
++{
++	u32 old = readl(h->mck);
++
++	if (FIELD_GET(MCK_SRC_SEL, old) == MCK_SRC_NCO3)
++		return 0;
++	writel((old & ~MCK_SRC_SEL) | FIELD_PREP(MCK_SRC_SEL, MCK_SRC_NCO3), h->mck);
++	if (!hp_mck_settle(h)) {
++		dev_info(h->dev, "mck2: %#x -> %#x\n", old, readl(h->mck));
++		return 0;
++	}
++	dev_err(h->dev, "mck2: still pending after 1 ms (%#x): is nco3 running?\n",
++		readl(h->mck));
++	writel(old, h->mck);
++	hp_mck_settle(h);
++	return -ETIMEDOUT;
++}
++
++/*
++ * As the speaker path's m4_cleanup_direction_once(): FIFO off, control RST,
++ * sync select none and back, wait for control bits 0xa to clear. Runs before
++ * every start with the clocks running and dir not enabled (RX also only
++ * while TX is not, j713_hp_prepare()); without it the FIFO keeps stale
++ * words and every start sounds different.
++ */
++static int hp_reset_serializer(struct hp *h, enum j713_hp_dir dir)
++{
++	const struct j713_hp_direction *d = &j713_hp_dirs[dir];
++	u32 ctl_reg = d->serializer + J713_HP_SER_CONTROL;
++	u32 conf_reg = d->serializer + J713_HP_SER_CONF;
++	u32 fifo = rd(h, J713_HP_ADP_FIFO_EN);
++	u32 conf = rd(h, conf_reg);
++	u32 ctrl = 0;
++	int i;
++
++	wr(h, J713_HP_ADP_FIFO_EN, fifo & ~d->fifo_en);
++	wr(h, ctl_reg, rd(h, ctl_reg) | 2);
++	wr(h, conf_reg, conf & ~J713_HP_CONF_SYNC_SEL);
++	wr(h, conf_reg, conf | J713_HP_CONF_SYNC_SEL);
++	udelay(200);
++	for (i = 0; i < 100; i++) {
++		ctrl = rd(h, ctl_reg);
++		if (!(ctrl & 0xa))
++			break;
++	}
++	wr(h, conf_reg, conf);
++	wr(h, J713_HP_ADP_FIFO_EN, fifo | d->fifo_en);
++	if (ctrl & 0xa) {
++		dev_err(h->dev, "%s serializer reset: control %#x did not clear\n",
++			d->name, ctrl);
++		return -EIO;
++	}
++	return 0;
++}
++
++/*
++ * Channel 5's BUS_WIDTH and FIFOCTL, in place of dmaengine_slave_config().
++ * ALSA has stopped and synchronized the stream before prepare, and the
++ * channel is this driver's alone; CTL bit 16 mirrors apple-admac's own
++ * idle test.
++ */
++static int hp_rx_dma(struct hp *h)
++{
++	u32 ctl = readl(h->rxdma + J713_HP_DMA_CTL);
++	struct j713_hp_plan p;
++	int bad;
++
++	if (!(ctl & J713_HP_DMA_IDLE)) {
++		dev_err(h->dev, "prepare: ADMAC channel %d not idle (ctl %#x), refusing\n",
++			J713_HP_RX_DMA_CHAN, ctl);
++		return -EBUSY;
++	}
++	if (WARN_ON(j713_hp_rx_dma_plan(&p)))
++		return -EINVAL;
++	hp_apply(h->rxdma, &p);
++	bad = hp_verify(h->rxdma, &p, "ch5", NULL);
++	dev_dbg(h->dev, "prepare: ADMAC channel %d bus_width %#x fifoctl %#x\n",
++		J713_HP_RX_DMA_CHAN, readl(h->rxdma + J713_HP_DMA_BUS_WIDTH),
++		readl(h->rxdma + J713_HP_DMA_FIFOCTL));
++	if (bad) {
++		dev_err(h->dev, "prepare: ADMAC channel %d: %d word(s) did not read back\n",
++			J713_HP_RX_DMA_CHAN, bad);
++		return -EIO;
++	}
++	return 0;
++}
++
++static int hp_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
++{
++	return fmt == (SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_IB_IF |
++		       SND_SOC_DAIFMT_BP_FP) ? 0 : -EINVAL;
++}
++
++static int hp_hw_params(struct snd_pcm_substream *s, struct snd_pcm_hw_params *p,
++			struct snd_soc_dai *dai)
++{
++	if (params_rate(p) != HP_RATE ||
++	    params_channels(p) != j713_hp_dirs[s->stream].channels ||
++	    params_format(p) != SNDRV_PCM_FORMAT_S32_LE)
++		return -EINVAL;
++	return 0;
++}
++
++/* ALSA calls this with the stream stopped and synchronized (sync_stop). */
++static int hp_prepare(struct snd_pcm_substream *s, struct snd_soc_dai *dai)
++{
++	struct hp *h = hp_from(s);
++	enum j713_hp_dir dir = s->stream;
++	struct j713_hp_prep a;
++	bool clocked;
++	int ret, bad = 0;
++
++	mutex_lock(&h->lock);
++	ret = hp_guard(h, dir, "prepare");
++	if (!ret && dir == J713_HP_RX)
++		ret = hp_rx_dma(h);
++	if (ret)
++		goto out;
++	clocked = hp_clocked(h);
++	if (clocked)
++		bad = hp_check(h, J713_HP_PROGRAM, NULL) + hp_check(h, J713_HP_PORT_OPEN, NULL);
++	a = j713_hp_prepare(dir, h->prepared, h->active, clocked, clocked && !bad);
++	if (a.busy) {
++		dev_err(h->dev, "prepare: cluster 2 %s, %d register(s) differ, and %s holds it: refusing\n",
++			clocked ? "clocked" : "idle", bad, j713_hp_dirs[!dir].name);
++		ret = -EBUSY;
++		goto out;
++	}
++	if (a.guard_other) {
++		ret = hp_guard(h, !dir, "prepare");
++		if (ret)
++			goto out;
++	}
++	if (a.teardown) {
++		dev_warn(h->dev, "prepare: %d register(s) changed while clocked, reprogramming\n",
++			 bad);
++		hp_run(h, J713_HP_TEARDOWN);
++	}
++	if (a.program) {
++		ret = hp_set_mck(h);
++		if (ret)
++			goto out;
++		hp_run(h, J713_HP_PROGRAM);
++		hp_run(h, J713_HP_PORT_OPEN);
++	}
++	if (a.reset)
++		ret = hp_reset_serializer(h, dir);
++	if (!ret)
++		h->prepared |= BIT(dir);
++out:
++	mutex_unlock(&h->lock);
++	return ret;
++}
++
++static int hp_trigger(struct snd_pcm_substream *s, int cmd, struct snd_soc_dai *dai)
++{
++	struct hp *h = hp_from(s);
++	bool on;
++
++	switch (cmd) {
++	case SNDRV_PCM_TRIGGER_START:
++	case SNDRV_PCM_TRIGGER_RESUME:
++	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
++		on = true;
++		break;
++	case SNDRV_PCM_TRIGGER_STOP:
++	case SNDRV_PCM_TRIGGER_SUSPEND:
++	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
++		on = false;
++		break;
++	default:
++		return -EINVAL;
++	}
++	mutex_lock(&h->lock);
++	hp_stage(h, s->stream, on);
++	mutex_unlock(&h->lock);
++	return 0;
++}
++
++/*
++ * The one cleanup owner, for the last hw_free and for unbind; h->lock held.
++ * Both guards run, so a stuck TX does not also leave RX enabled. With either
++ * direction stuck on, leave the cluster clocked rather than touch it, and
++ * return -EBUSY: the caller must then keep mck2 and the power domains as
++ * they are too. ASoC ignores hw_free's return value, so unbind checks the
++ * hardware again.
++ */
++static int hp_quiesce(struct hp *h, const char *what)
++{
++	int tx = hp_guard(h, J713_HP_TX, what);
++	int rx = hp_guard(h, J713_HP_RX, what);
++
++	if (tx || rx)
++		return -EBUSY;
++	hp_run(h, J713_HP_TEARDOWN);
++	return 0;
++}
++
++static int hp_hw_free(struct snd_pcm_substream *s, struct snd_soc_dai *dai)
++{
++	struct hp *h = hp_from(s);
++	enum j713_hp_dir dir = s->stream;
++	int ret;
++
++	mutex_lock(&h->lock);
++	h->prepared &= ~BIT(dir);
++	if ((h->prepared | h->active) & BIT(!dir))
++		ret = hp_guard(h, dir, "hw_free");
++	else
++		ret = hp_quiesce(h, "hw_free");
++	mutex_unlock(&h->lock);
++	return ret;
++}
++
++static const struct snd_soc_dai_ops hp_dai_ops = {
++	.set_fmt = hp_set_fmt,
++	.hw_params = hp_hw_params,
++	.prepare = hp_prepare,
++	.trigger = hp_trigger,
++	.hw_free = hp_hw_free,
++};
++
++static struct snd_soc_dai_driver hp_dai = {
++	.name = "j773g-headphones",
++	.playback = {
++		.stream_name = "Playback",
++		.channels_min = 2,
++		.channels_max = 2,
++		.rates = SNDRV_PCM_RATE_48000,
++		.formats = SNDRV_PCM_FMTBIT_S32_LE,
++	},
++	.capture = {
++		.stream_name = "Capture",
++		.channels_min = 1,
++		.channels_max = 1,
++		.rates = SNDRV_PCM_RATE_48000,
++		.formats = SNDRV_PCM_FMTBIT_S32_LE,
++	},
++	.ops = &hp_dai_ops,
++};
++
++static int hp_pcm_open(struct snd_soc_component *c, struct snd_pcm_substream *s)
++{
++	struct dma_chan *chan = hp_from(s)->chan[s->stream];
++	struct snd_dmaengine_dai_dma_data dma_data = {};
++	struct snd_pcm_hardware hw = {
++		.info = SNDRV_PCM_INFO_MMAP | SNDRV_PCM_INFO_MMAP_VALID |
++			SNDRV_PCM_INFO_INTERLEAVED,
++		.periods_min = 2,
++		.periods_max = UINT_MAX,
++		.period_bytes_min = 256,
++		.period_bytes_max = dma_get_max_seg_size(chan->device->dev),
++		.buffer_bytes_max = SIZE_MAX,
++		.fifo_size = 16,
++	};
++	int ret;
++
++	ret = snd_dmaengine_pcm_refine_runtime_hwparams(s, &dma_data, &hw, chan);
++	if (ret)
++		return ret;
++	ret = snd_soc_set_runtime_hwparams(s, &hw);
++	if (ret)
++		return ret;
++	return snd_dmaengine_pcm_open(s, chan);
++}
++
++static int hp_pcm_hw_params(struct snd_soc_component *c, struct snd_pcm_substream *s,
++			    struct snd_pcm_hw_params *p)
++{
++	struct dma_slave_config config = {};
++	int ret;
++
++	/*
++	 * apple-admac sends every split-channel RX config to its channel-1-only
++	 * RX setter, which refuses channel 5 and would fail hw_params. Capture
++	 * prepare writes channel 5's two words instead (hp_rx_dma()).
++	 */
++	if (s->stream == SNDRV_PCM_STREAM_CAPTURE)
++		return 0;
++	ret = snd_hwparams_to_dma_slave_config(s, p, &config);
++	if (ret)
++		return ret;
++	config.dst_port_window_size = params_channels(p);
++	return dmaengine_slave_config(snd_dmaengine_pcm_get_chan(s), &config);
++}
++
++static int hp_pcm_trigger(struct snd_soc_component *c, struct snd_pcm_substream *s,
++			  int cmd)
++{
++	return snd_dmaengine_pcm_trigger(s, cmd);
++}
++
++static snd_pcm_uframes_t hp_pcm_pointer(struct snd_soc_component *c,
++					struct snd_pcm_substream *s)
++{
++	return snd_dmaengine_pcm_pointer(s);
++}
++
++static int hp_pcm_sync_stop(struct snd_soc_component *c, struct snd_pcm_substream *s)
++{
++	snd_dmaengine_pcm_sync_stop(s);
++	return 0;
++}
++
++static int hp_pcm_close(struct snd_soc_component *c, struct snd_pcm_substream *s)
++{
++	return snd_dmaengine_pcm_close(s);
++}
++
++static int hp_pcm_new(struct snd_soc_component *c, struct snd_soc_pcm_runtime *rtd)
++{
++	struct hp *h = snd_soc_card_get_drvdata(rtd->card);
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(h->chan); i++) {
++		struct snd_pcm_substream *s = rtd->pcm->streams[i].substream;
++
++		if (s)
++			snd_pcm_set_managed_buffer(s, SNDRV_DMA_TYPE_DEV_IRAM,
++						   h->chan[i]->device->dev, 512 * 1024,
++						   SIZE_MAX);
++	}
++	return 0;
++}
++
++static const struct snd_soc_component_driver hp_component = {
++	.name = "j773g-headphones",
++	.open = hp_pcm_open,
++	.close = hp_pcm_close,
++	.hw_params = hp_pcm_hw_params,
++	.trigger = hp_pcm_trigger,
++	.sync_stop = hp_pcm_sync_stop,
++	.pointer = hp_pcm_pointer,
++	.pcm_new = hp_pcm_new,
++};
++
++static const struct snd_soc_dapm_widget hp_widgets[] = {
++	SND_SOC_DAPM_HP("Headphone", NULL),
++	SND_SOC_DAPM_MIC("Headset Mic", NULL),
++};
++
++static const struct snd_soc_dapm_route hp_routes[] = {
++	{ "Headphone", NULL, "Jack HP" },
++	{ "Jack HS", NULL, "Headset Mic" },
++};
++
++static struct snd_soc_jack_pin hp_jack_pins[] = {
++	{ .pin = "Headphone", .mask = SND_JACK_HEADPHONE },
++	{ .pin = "Headset Mic", .mask = SND_JACK_MICROPHONE },
++};
++
++static int hp_link_hw_params(struct snd_pcm_substream *s, struct snd_pcm_hw_params *p)
++{
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(s);
++
++	/* Stock CS42L84 row: 3.072 MHz BCLK through its PLL to 12.288 MHz. */
++	return snd_soc_dai_set_sysclk(snd_soc_rtd_to_codec(rtd, 0), 0, HP_BCLK,
++				      SND_SOC_CLOCK_IN);
++}
++
++static const struct snd_soc_ops hp_link_ops = {
++	.hw_params = hp_link_hw_params,
++};
++
++static int hp_link_init(struct snd_soc_pcm_runtime *rtd)
++{
++	struct hp *h = snd_soc_card_get_drvdata(rtd->card);
++	int ret;
++
++	/* Kcontrols "Headphone Jack" and "Headset Mic Jack" */
++	ret = snd_soc_card_jack_new_pins(rtd->card, "Headphone Jack",
++					 SND_JACK_HEADSET | SND_JACK_HEADPHONE,
++					 &h->jack, hp_jack_pins,
++					 ARRAY_SIZE(hp_jack_pins));
++	if (ret)
++		return ret;
++	return snd_soc_component_set_jack(snd_soc_rtd_to_codec(rtd, 0)->component,
++					  &h->jack, NULL);
++}
++
++static void hp_link_exit(struct snd_soc_pcm_runtime *rtd)
++{
++	snd_soc_component_set_jack(snd_soc_rtd_to_codec(rtd, 0)->component,
++				   NULL, NULL);
++}
++
++/* Without a cap, 100 % on the desktop is +12 dB of digital gain. */
++static int hp_late_probe(struct snd_soc_card *card)
++{
++	int ret = snd_soc_limit_volume(card, "Jack DAC Playback Volume", HP_VOLUME_MAX);
++
++	return ret < 0 ? ret : 0;
++}
++
++static int regs_show(struct seq_file *m, void *unused)
++{
++	struct hp *h = m->private;
++	struct j713_hp_plan p;
++	u32 off;
++	int bad;
++
++	mutex_lock(&h->lock);
++	seq_printf(m, "cluster 2 %s, TX_ACTIVE (+0168) %08x, RX_ACTIVE (+0158) %08x, prepared %x active %x\n",
++		   hp_clocked(h) ? "clocked" : "idle", rd(h, J713_HP_TX_ACTIVE),
++		   rd(h, J713_HP_RX_ACTIVE), h->prepared, h->active);
++	seq_puts(m, "recipe (final writes of PROGRAM and PORT_OPEN):\n");
++	bad = hp_check(h, J713_HP_PROGRAM, m);
++	bad += hp_check(h, J713_HP_PORT_OPEN, m);
++	seq_printf(m, "mismatches: %d\n", bad);
++	seq_printf(m, "mck2 @%#llx: %08x (boot %08x)\n", PMGR_MCK2, readl(h->mck),
++		   h->mck_boot);
++	seq_puts(m, "global:\n");
++	for (off = J713_HP_SYNC_OMUX_SEL(0); off <= J713_HP_ALIGNED_ENABLE_TRIGGER; off += 4)
++		seq_printf(m, "  +%04x: %08x\n", off, rd(h, off));
++	seq_printf(m, "port 2: enables %08x clock_sel %08x data_sel %08x (boot %08x %08x %08x)\n",
++		   rd(h, J713_HP_PORT_ENABLES), rd(h, J713_HP_PORT_CLOCK_SEL),
++		   rd(h, J713_HP_PORT_DATA_SEL), h->port_boot[0], h->port_boot[1],
++		   h->port_boot[2]);
++	seq_printf(m, "serializer control %08x, fifo %08x en %08x level %08x\n",
++		   rd(h, J713_HP_TXS_CONTROL), rd(h, J713_HP_ADP_FIFO),
++		   rd(h, J713_HP_ADP_FIFO_EN), rd(h, J713_HP_ADP_LEVEL));
++	seq_printf(m, "rx serializer control %08x conf %08x delay %08x masks %08x %08x src %08x lb %08x, rx level %08x\n",
++		   rd(h, J713_HP_RXS_CONTROL), rd(h, J713_HP_RXS_CONF),
++		   rd(h, J713_HP_RXS_DELAY), rd(h, J713_HP_RXS_MASK_HI),
++		   rd(h, J713_HP_RXS_MASK_LO), rd(h, J713_HP_RXS_SOURCES),
++		   rd(h, J713_HP_RXS_LOOPBACK), rd(h, J713_HP_ADP_RX_LEVEL));
++	seq_printf(m, "admac ch%d @%#llx: ctl %08x config %08x carveout %08x enable %08x\n",
++		   J713_HP_RX_DMA_CHAN, J713_HP_RX_DMA_PHYS,
++		   readl(h->rxdma + J713_HP_DMA_CTL), readl(h->rxdma + J713_HP_DMA_CONFIG),
++		   readl(h->rxdma + J713_HP_DMA_CARVEOUT), readl(h->rxdma + J713_HP_DMA_ENABLE));
++	if (!WARN_ON(j713_hp_rx_dma_plan(&p)))
++		seq_printf(m, "ch5 mismatches: %d\n", hp_verify(h->rxdma, &p, "ch5", m));
++	mutex_unlock(&h->lock);
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(regs);
++
++/*
++ * Probe's unwind, and unbind's after hp_quiesce(). keep_power leaves mck2's
++ * source and the power-domain links in place for good: a serializer is
++ * still enabled.
++ */
++static void hp_put(struct hp *h, bool keep_power)
++{
++	int i;
++
++	if (!keep_power) {
++		/* Source select only: bit 8 follows the power domain (0x90100100 off, 0x90100000 on). */
++		if (h->mck && (readl(h->mck) ^ h->mck_boot) & MCK_SRC_SEL) {
++			writel((readl(h->mck) & ~MCK_SRC_SEL) | (h->mck_boot & MCK_SRC_SEL),
++			       h->mck);
++			if (hp_mck_settle(h))
++				dev_err(h->dev, "mck2: restore to source %lu still pending\n",
++					FIELD_GET(MCK_SRC_SEL, h->mck_boot));
++		}
++		for (i = ARRAY_SIZE(h->pd) - 1; i >= 0; i--) {
++			if (h->pd_link[i])
++				device_link_del(h->pd_link[i]);
++			if (!IS_ERR_OR_NULL(h->pd[i]))
++				dev_pm_domain_detach(h->pd[i], true);
++		}
++	}
++	for (i = ARRAY_SIZE(h->chan) - 1; i >= 0; i--)
++		if (!IS_ERR_OR_NULL(h->chan[i]))
++			dma_release_channel(h->chan[i]);
++	of_node_put(h->codec_np);
++}
++
++/* Unbind: runs after the card and component are unregistered (PCM closed). */
++static void hp_release(void *data)
++{
++	struct hp *h = data;
++	bool stuck;
++
++	debugfs_remove_recursive(h->dbg);
++	mutex_lock(&h->lock);
++	stuck = hp_quiesce(h, "unbind") != 0;
++	mutex_unlock(&h->lock);
++	if (stuck)
++		dev_err(h->dev, "unbind: TX or RX stuck on; mck2 and the power domains stay as they are until power-off, and rebinding needs a power cycle\n");
++	hp_put(h, stuck);
++}
++
++static int hp_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct hp *h;
++	int i, ret;
++
++	h = devm_kzalloc(dev, sizeof(*h), GFP_KERNEL);
++	if (!h)
++		return -ENOMEM;
++	h->dev = dev;
++	mutex_init(&h->lock);
++
++	/* Not requested: these windows sit inside the speaker MCA's range. */
++	h->mca = devm_ioremap(dev, J713_HP_MCA_PHYS, J713_HP_MCA_SIZE);
++	if (!h->mca)
++		return -ENOMEM;
++	h->mck = devm_ioremap(dev, PMGR_MCK2, 4);
++	if (!h->mck)
++		return -ENOMEM;
++	h->mck_boot = readl(h->mck);
++	/* Not requested either: channel 5's window sits inside apple-admac's range. */
++	h->rxdma = devm_ioremap(dev, J713_HP_RX_DMA_PHYS, J713_HP_RX_DMA_SIZE);
++	if (!h->rxdma)
++		return -ENOMEM;
++
++	for (i = 0; i < ARRAY_SIZE(h->pd); i++) {
++		h->pd[i] = dev_pm_domain_attach_by_id(dev, i);
++		if (IS_ERR_OR_NULL(h->pd[i])) {
++			ret = h->pd[i] ? PTR_ERR(h->pd[i]) : -ENODEV;
++			goto err;
++		}
++		h->pd_link[i] = device_link_add(dev, h->pd[i],
++						DL_FLAG_STATELESS | DL_FLAG_PM_RUNTIME |
++						DL_FLAG_RPM_ACTIVE);
++		if (!h->pd_link[i]) {
++			ret = -EINVAL;
++			goto err;
++		}
++	}
++
++	h->chan[J713_HP_TX] = dma_request_chan(dev, "tx");
++	if (IS_ERR(h->chan[J713_HP_TX])) {
++		ret = PTR_ERR(h->chan[J713_HP_TX]);
++		goto err;
++	}
++	h->chan[J713_HP_RX] = dma_request_chan(dev, "rx");
++	if (IS_ERR(h->chan[J713_HP_RX])) {
++		ret = PTR_ERR(h->chan[J713_HP_RX]);
++		goto err;
++	}
++	/* The DT names the channel, the plan header its registers: they must agree. */
++	if (h->chan[J713_HP_RX]->chan_id != J713_HP_RX_DMA_CHAN) {
++		dev_err(dev, "rx DMA is channel %d, expected %d\n",
++			h->chan[J713_HP_RX]->chan_id, J713_HP_RX_DMA_CHAN);
++		ret = -ENODEV;
++		goto err;
++	}
++
++	h->codec_np = of_parse_phandle(dev->of_node, "omarchy,codec", 0);
++	if (!h->codec_np) {
++		ret = -ENODEV;
++		goto err;
++	}
++
++	/* Runs after the card and component below are unregistered. */
++	ret = devm_add_action_or_reset(dev, hp_release, h);
++	if (ret)
++		return ret;
++
++	/* Port 2 is not the speaker's; read with the domains up. */
++	h->port_boot[0] = rd(h, J713_HP_PORT_ENABLES);
++	h->port_boot[1] = rd(h, J713_HP_PORT_CLOCK_SEL);
++	h->port_boot[2] = rd(h, J713_HP_PORT_DATA_SEL);
++
++	h->dbg = debugfs_create_dir("j773g_headphones", NULL);
++	debugfs_create_file("regs", 0400, h->dbg, h, &regs_fops);
++
++	ret = devm_snd_soc_register_component(dev, &hp_component, &hp_dai, 1);
++	if (ret)
++		return dev_err_probe(dev, ret, "component\n");
++
++	h->comps[0].of_node = dev->of_node;
++	h->comps[0].dai_name = hp_dai.name;
++	h->comps[1].of_node = h->codec_np;
++	h->comps[1].dai_name = "cs42l84";
++	h->comps[2].of_node = dev->of_node;
++
++	h->link.name = "Headphones";
++	h->link.stream_name = "Headphones";
++	h->link.cpus = &h->comps[0];
++	h->link.num_cpus = 1;
++	h->link.codecs = &h->comps[1];
++	h->link.num_codecs = 1;
++	h->link.platforms = &h->comps[2];
++	h->link.num_platforms = 1;
++	h->link.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_IB_IF |
++			  SND_SOC_DAIFMT_CBC_CFC;
++	h->link.nonatomic = 1;
++	h->link.init = hp_link_init;
++	h->link.exit = hp_link_exit;
++	h->link.ops = &hp_link_ops;
++
++	/* name is the card id and the UCM directory */
++	h->card.name = "J773gHeadphones";
++	h->card.driver_name = "J773gHeadphones";
++	h->card.long_name = "J773g Headphones";
++	h->card.owner = THIS_MODULE;
++	h->card.dev = dev;
++	h->card.dai_link = &h->link;
++	h->card.num_links = 1;
++	h->card.dapm_widgets = hp_widgets;
++	h->card.num_dapm_widgets = ARRAY_SIZE(hp_widgets);
++	h->card.dapm_routes = hp_routes;
++	h->card.num_dapm_routes = ARRAY_SIZE(hp_routes);
++	h->card.late_probe = hp_late_probe;
++	snd_soc_card_set_drvdata(&h->card, h);
++
++	ret = devm_snd_soc_register_card(dev, &h->card);
++	if (ret)
++		return dev_err_probe(dev, ret, "card\n");
++	dev_info(dev, "mck2 boot %#x, port 2 boot %#x/%#x/%#x\n", h->mck_boot,
++		 h->port_boot[0], h->port_boot[1], h->port_boot[2]);
++	return 0;
++
++err:
++	hp_put(h, false);
++	return dev_err_probe(dev, ret, "probe\n");
++}
++
++static const struct of_device_id hp_of_match[] = {
++	{ .compatible = "omarchy,j773g-headphones" },
++	{}
++};
++MODULE_DEVICE_TABLE(of, hp_of_match);
++
++static struct platform_driver hp_driver = {
++	.driver = {
++		.name = "j773g-headphones",
++		.of_match_table = hp_of_match,
++	},
++	.probe = hp_probe,
++};
++module_platform_driver(hp_driver);
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("J773g (M4 Mac mini) headphone jack card (MCA cluster 2 + CS42L84): headphones and headset mic");
+--- a/sound/soc/apple/t8132/j713_hp_plan.h
++++ b/sound/soc/apple/t8132/j713_hp_plan.h
+@@ -0,0 +1,433 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * J713 headphone jack register plans and the two-direction policy. No
++ * function in this header performs MMIO.
++ *
++ * The headphone stream is the macOS "coS " codec stream from the AOP
++ * firmware: mck2 (PMGR mux on nco3, 3.072 MHz) -> ckg2 -> syn2 (64-bit
++ * 50% frame) -> TX serializer ms02 -> I2S port 2 -> CS42L84. The headset
++ * mic ("cirx") runs back on the same clock and frame: I2S port 2 -> RX
++ * serializer 2 -> DMA adapter 2's RX half -> ADMAC channel 5. Both live in
++ * MCA cluster 2 of the block at 0x393600000, beside the speaker's cluster 0.
++ *
++ * Shared-register contract. The global block at +0x000..+0x22f is shared
++ * with the speaker driver (snd-soc-apple-mca, cluster 0). These are the
++ * only accesses to it:
++ *  - writes SYNC_OMUX_SEL(2) (+0x108) := 3, in PROGRAM only (prepare);
++ *  - writes J713_HP_BIT to SYNC_OMUX_ENABLE_SET/_CLR (+0x140/+0x144),
++ *    RX_ENABLE_SET/_CLR (+0x150/+0x154) and TX_ENABLE_SET/_CLR
++ *    (+0x160/+0x164), and 1 to ALIGNED_ENABLE_TRIGGER (+0x170), only from
++ *    j713_hp_stage() (trigger, and the driver's guard);
++ *  - reads TX_ACTIVE (+0x168) and RX_ACTIVE (+0x158), in the driver's guard;
++ *  - never touches SYNC_OMUX_SEL(0) (+0x100, the speaker's) or any other
++ *    bit. The speaker stages bit 0 of the same SET/CLR registers (TX, and
++ *    RX for its IV-sense feedback) under its own lock.
++ * Every other write lands in cluster 2's clock window (port 2 included),
++ * TX serializer 2, RX serializer 2 or DMA adapter 2. The timing registers
++ * of cluster 2, both serializers included, are written only by PROGRAM,
++ * with both directions idle and the cluster's clocks off. The one
++ * exception is the driver's serializer reset, which toggles CONF's sync
++ * select with the clocks running, as the speaker's
++ * m4_cleanup_direction_once() does: TX whenever TX is not enabled, RX only
++ * while TX is not enabled either (j713_hp_prepare()). kernel/test/plan_test.c
++ * checks all of this for every plan and every stage.
++ *
++ * Contract with apple-admac (the pinned admac.c). Channel 5 is claimed by
++ * this driver alone (DT dma-names "rx", chan_id checked at probe). Its
++ * BUS_WIDTH and FIFOCTL words are written only by j713_hp_rx_dma_plan(),
++ * from capture prepare, where ALSA has stopped and synchronized the stream
++ * (dmaengine terminate + synchronize), and are verified by readback.
++ * apple-admac never writes those two words for channel 5: its RX setter is
++ * channel 1 only, and its generic paths write CTL, CONFIG, BURST, ENABLE
++ * and the SRAM carveout.
++ *
++ * Global register names are the AOP firmware's (routine 0x105cb58): the
++ * enable path writes SEL, OMUX set, RX set, TX set, trigger; the disable
++ * path OMUX clr, RX clr, TX clr, trigger. The SET/CLR/trigger registers
++ * are write-only (they read back 0).
++ */
++#ifndef J713_HP_PLAN_H
++#define J713_HP_PLAN_H
++
++#define J713_HP_MCA_PHYS		0x393600000ULL
++#define J713_HP_MCA_SIZE		0x9000
++
++/* Shared global block */
++#define J713_HP_GLOBAL_SIZE		0x230
++#define J713_HP_SYNC_OMUX_SEL(n)	(0x100 + 4 * (n))
++#define J713_HP_SYNC_OMUX_ENABLE_SET	0x140
++#define J713_HP_SYNC_OMUX_ENABLE_CLR	0x144
++#define J713_HP_RX_ENABLE_SET		0x150
++#define J713_HP_RX_ENABLE_CLR		0x154
++#define J713_HP_RX_ACTIVE		0x158	/* bit 0 is the speaker's IV sense */
++#define J713_HP_TX_ENABLE_SET		0x160
++#define J713_HP_TX_ENABLE_CLR		0x164
++#define J713_HP_TX_ACTIVE		0x168
++#define J713_HP_ALIGNED_ENABLE_TRIGGER	0x170
++
++/* mck2/ckg2/syn2/ms02, OMUX 2, I2S port 2, RX/TX serializer 2, DMA adapter 2 */
++#define J713_HP_IDX			2
++#define J713_HP_BIT			(1U << J713_HP_IDX)
++
++/* Cluster 2 clock window: clock gen +0x00, sync gen +0x20, port 2 +0x60 */
++#define J713_HP_CLK			(0x2000 + J713_HP_IDX * 0x100)
++#define J713_HP_MCLK_STATUS		(J713_HP_CLK + 0x00)
++#define J713_HP_CLOCK_GEN_CONFIG	(J713_HP_CLK + 0x04)
++#define J713_HP_SYNC_STATUS		(J713_HP_CLK + 0x20)
++#define J713_HP_SYNC_CONFIG		(J713_HP_CLK + 0x24)
++#define J713_HP_SYNC_HI			(J713_HP_CLK + 0x28)
++#define J713_HP_SYNC_LO			(J713_HP_CLK + 0x2c)
++#define J713_HP_PORT_ENABLES		(J713_HP_CLK + 0x60)
++#define J713_HP_PORT_CLOCK_SEL		(J713_HP_CLK + 0x64)
++#define J713_HP_PORT_DATA_SEL		(J713_HP_CLK + 0x68)
++#define J713_HP_CLK_END			(J713_HP_CLK + 0x100)
++#define  J713_HP_EN			0x1	/* MCLK_STATUS / SYNC_STATUS enable */
++
++/* Either serializer: CONTROL and CONF sit at the same offsets. */
++#define J713_HP_SER_CONTROL		0x00
++#define J713_HP_SER_CONF		0x04
++#define  J713_HP_CONF_SYNC_SEL		0x70000
++
++/* RX serializer 2 (the m4_t8132_build_rx() layout) */
++#define J713_HP_RXS			(0x4000 + J713_HP_IDX * 0x100)
++#define J713_HP_RXS_CONTROL		(J713_HP_RXS + J713_HP_SER_CONTROL)
++#define J713_HP_RXS_CONF		(J713_HP_RXS + J713_HP_SER_CONF)
++#define J713_HP_RXS_DELAY		(J713_HP_RXS + 0x08)
++#define J713_HP_RXS_MASK_HI		(J713_HP_RXS + 0x0c)
++#define J713_HP_RXS_MASK_LO		(J713_HP_RXS + 0x10)
++#define J713_HP_RXS_SOURCES		(J713_HP_RXS + 0x14)
++#define J713_HP_RXS_LOOPBACK		(J713_HP_RXS + 0x18)
++#define J713_HP_RXS_END			(J713_HP_RXS + 0x100)
++
++/* TX serializer 2 */
++#define J713_HP_TXS			(0x6000 + J713_HP_IDX * 0x100)
++#define J713_HP_TXS_CONTROL		(J713_HP_TXS + J713_HP_SER_CONTROL)
++#define J713_HP_TXS_CONF		(J713_HP_TXS + J713_HP_SER_CONF)
++#define J713_HP_TXS_BITSTART		(J713_HP_TXS + 0x08)
++#define J713_HP_TXS_SLOTMASK(n)		(J713_HP_TXS + 0x0c + 4 * (n))
++#define J713_HP_TXS_END			(J713_HP_TXS + 0x100)
++
++/* DMA adapter 2 */
++#define J713_HP_ADP			(0x8000 + J713_HP_IDX * 0x100)
++#define J713_HP_ADP_FIFO		(J713_HP_ADP + 0x00)
++#define J713_HP_ADP_FIFO_EN		(J713_HP_ADP + 0x04)
++#define  J713_HP_FIFO_EN_TX		0x1
++#define  J713_HP_FIFO_EN_RX		0x10
++#define  J713_HP_FIFO_EN_BOTH		(J713_HP_FIFO_EN_TX | J713_HP_FIFO_EN_RX)
++#define J713_HP_ADP_LEVEL		(J713_HP_ADP + 0x08)
++#define J713_HP_ADP_RX_LEVEL		(J713_HP_ADP + 0x0c)	/* debugfs only */
++#define J713_HP_ADP_END			(J713_HP_ADP + 0x100)
++
++/* The recipe (docs/j713-headphones.md, "What made it work") */
++#define J713_HP_CLOCK_GEN		0x100	/* divisor 1, select 0: mck2 at 3.072 MHz */
++#define J713_HP_SYNC_SEL		(J713_HP_IDX + 1)	/* bit 9 (frame invert) OFF */
++#define J713_HP_HALF_FRAME		31	/* HI/LO 31/31: 64-bit 50% frame */
++/* NCHANS 2 | WIDTH_32 | UNK123 | SYNC_SEL 3; no BCLK_POL, MSB first */
++#define J713_HP_TX_CONF			(0x1 | 0x100 | 0x7000 | (J713_HP_SYNC_SEL << 16))
++#define J713_HP_BITSTART		1
++/*
++ * m4_t8132_build_rx({channels 0x1, width 32, delay 1, i2s_sources 0x4,
++ * loopback 0, sync_type 2, sync_index 2, falling_edge false}):
++ * 0xb000 | SYNC_SEL 3 | WIDTH_32 | BCLK_POL (rising edge) | last index 0.
++ */
++#define J713_HP_RX_CONF			(0xb000 | (J713_HP_SYNC_SEL << 16) | 0x100 | 0x400)
++#define J713_HP_RX_DELAY		1
++#define J713_HP_RX_SOURCES		J713_HP_BIT	/* I2S port 2 */
++#define J713_HP_RX_SOURCES_MASK		0x3f
++/*
++ * One write for both halves of the shared FIFO word, so the readback
++ * checks both: m4_t8132_build_tx_fifo(old, 1, 32, 16) (threshold 16, no
++ * packing or pad) | m4_t8132_build_rx_fifo(old, 1, 32, false) (no packing
++ * or pad: the RX field is 0).
++ */
++#define J713_HP_TX_FIFO_MASK		0x807f007fU
++#define J713_HP_RX_FIFO_MASK		0x80007f00U
++#define J713_HP_FIFO_MASK		(J713_HP_TX_FIFO_MASK | J713_HP_RX_FIFO_MASK)
++#define J713_HP_FIFO_VALUE		(16U << 16)
++/* Port staging as the speaker's j713_port_open(): clock = syncgen idx+1 */
++#define J713_HP_PORT_CLOCK_MASK		0xf00U
++#define J713_HP_PORT_CLOCK		((J713_HP_IDX + 1) << 8)
++#define J713_HP_PORT_DATA		J713_HP_BIT	/* serializer 2 */
++
++/*
++ * ADMAC channel 5, the RX channel next to the headphone TX channel 4.
++ * apple-admac's split-channel layout (admac.c probe): RX bank +0x4000,
++ * 0x200 per channel pair.
++ */
++#define J713_HP_ADMAC_PHYS		0x393800000ULL
++#define J713_HP_RX_DMA_CHAN		5
++#define J713_HP_RX_DMA_PHYS		(J713_HP_ADMAC_PHYS + 0x8000 +		\
++					 (J713_HP_RX_DMA_CHAN & 1) * 0x4000 +	\
++					 (J713_HP_RX_DMA_CHAN / 2) * 0x200)
++#define J713_HP_RX_DMA_SIZE		0x100
++#define J713_HP_DMA_CTL			0x00
++#define  J713_HP_DMA_IDLE		0x10000	/* apple-admac's own idle test */
++#define J713_HP_DMA_CONFIG		0x04	/* debugfs only */
++#define J713_HP_DMA_BUS_WIDTH		0x40
++#define  J713_HP_DMA_BUS_MASK		0xff	/* WORD_SIZE | FRAME_SIZE */
++#define  J713_HP_DMA_BUS_32BIT		0x02	/* 32-bit words, 1-word frame */
++#define J713_HP_DMA_CARVEOUT		0x50	/* debugfs only */
++#define J713_HP_DMA_FIFOCTL		0x54
++#define  J713_HP_DMA_FIFOCTL_VALUE	0x180	/* as the speaker's channel 1 */
++#define J713_HP_DMA_ENABLE		0xa0	/* debugfs only */
++
++/* Directions, numbered as ALSA's streams (0 playback, 1 capture). */
++enum j713_hp_dir {
++	J713_HP_TX,
++	J713_HP_RX,
++};
++
++struct j713_hp_direction {
++	const char *name;
++	u32 enable_set;		/* staged enable, global block */
++	u32 enable_clr;
++	u32 active;		/* status, read in the guard */
++	u32 serializer;		/* window base: J713_HP_SER_CONTROL, _CONF */
++	u32 fifo_en;		/* bit in J713_HP_ADP_FIFO_EN */
++	u32 channels;
++};
++
++static const struct j713_hp_direction j713_hp_dirs[2] = {
++	[J713_HP_TX] = { "TX", J713_HP_TX_ENABLE_SET, J713_HP_TX_ENABLE_CLR,
++			 J713_HP_TX_ACTIVE, J713_HP_TXS, J713_HP_FIFO_EN_TX, 2 },
++	[J713_HP_RX] = { "RX", J713_HP_RX_ENABLE_SET, J713_HP_RX_ENABLE_CLR,
++			 J713_HP_RX_ACTIVE, J713_HP_RXS, J713_HP_FIFO_EN_RX, 1 },
++};
++
++enum j713_hp_step {
++	J713_HP_PROGRAM,	/* prepare, cluster idle: the whole cluster-2 recipe */
++	J713_HP_PORT_OPEN,	/* prepare: port 2 staging */
++	J713_HP_TEARDOWN,	/* hw_free: port 2 to boot values, enables off */
++	J713_HP_NSTEPS
++};
++
++/* mask ~0 is an absolute write; anything else is read-modify-write. */
++struct j713_hp_write {
++	u32 offset;	/* from the plan's base: the MCA, or ch5 for j713_hp_rx_dma_plan() */
++	u32 mask;
++	u32 value;
++};
++
++#define J713_HP_PLAN_MAX	24
++
++struct j713_hp_plan {
++	struct j713_hp_write writes[J713_HP_PLAN_MAX];
++	u32 count;
++	bool overflow;	/* a write did not fit; the plan is never used */
++};
++
++static inline const char *j713_hp_step_name(enum j713_hp_step step)
++{
++	static const char *const names[J713_HP_NSTEPS] = {
++		"PROGRAM", "PORT_OPEN", "TEARDOWN",
++	};
++
++	return step < J713_HP_NSTEPS ? names[step] : "?";
++}
++
++static inline void j713_hp_add(struct j713_hp_plan *p, u32 offset, u32 mask,
++			       u32 value)
++{
++	if (p->count >= J713_HP_PLAN_MAX) {
++		p->overflow = true;
++		return;
++	}
++	p->writes[p->count++] = (struct j713_hp_write){ offset, mask, value & mask };
++}
++
++/* Hand out a finished plan; one that overflowed is refused. */
++static inline int j713_hp_finish(const struct j713_hp_plan *p,
++				 struct j713_hp_plan *out)
++{
++	if (p->overflow)
++		return -E2BIG;
++	*out = *p;
++	return 0;
++}
++
++/* port_boot: port 2 ENABLES, CLOCK_SEL, DATA_SEL as read at probe. */
++static inline int j713_hp_plan(enum j713_hp_step step, const u32 port_boot[3],
++			       struct j713_hp_plan *out)
++{
++	struct j713_hp_plan p = { .count = 0 };
++	u32 en, sel, data;
++
++	if (!out || !port_boot)
++		return -EINVAL;
++	en = port_boot[0];
++	sel = port_boot[1];
++	data = port_boot[2];
++
++	switch (step) {
++	case J713_HP_PROGRAM:
++		j713_hp_add(&p, J713_HP_CLOCK_GEN_CONFIG, ~0U, J713_HP_CLOCK_GEN);
++		j713_hp_add(&p, J713_HP_SYNC_CONFIG, ~0U, J713_HP_SYNC_SEL);
++		j713_hp_add(&p, J713_HP_SYNC_HI, ~0U, J713_HP_HALF_FRAME);
++		j713_hp_add(&p, J713_HP_SYNC_LO, ~0U, J713_HP_HALF_FRAME);
++		j713_hp_add(&p, J713_HP_SYNC_OMUX_SEL(J713_HP_IDX), ~0U,
++			    J713_HP_SYNC_SEL);
++		j713_hp_add(&p, J713_HP_TXS_CONF, ~0U, J713_HP_TX_CONF);
++		j713_hp_add(&p, J713_HP_TXS_BITSTART, ~0U, J713_HP_BITSTART);
++		j713_hp_add(&p, J713_HP_TXS_SLOTMASK(0), ~0U, ~0U);
++		j713_hp_add(&p, J713_HP_TXS_SLOTMASK(1), ~0U, ~0x3U);
++		j713_hp_add(&p, J713_HP_TXS_SLOTMASK(2), ~0U, ~0U);
++		j713_hp_add(&p, J713_HP_TXS_SLOTMASK(3), ~0U, ~0x3U);
++		/* In m4_t8132_build_rx() order; one slot: masks ~0 / ~1. */
++		j713_hp_add(&p, J713_HP_RXS_SOURCES, J713_HP_RX_SOURCES_MASK,
++			    J713_HP_RX_SOURCES);
++		j713_hp_add(&p, J713_HP_RXS_LOOPBACK, ~0U, 0);
++		j713_hp_add(&p, J713_HP_RXS_CONF, ~0U, J713_HP_RX_CONF);
++		j713_hp_add(&p, J713_HP_RXS_DELAY, ~0U, J713_HP_RX_DELAY);
++		j713_hp_add(&p, J713_HP_RXS_MASK_HI, ~0U, ~0U);
++		j713_hp_add(&p, J713_HP_RXS_MASK_LO, ~0U, ~0x1U);
++		j713_hp_add(&p, J713_HP_ADP_FIFO, J713_HP_FIFO_MASK, J713_HP_FIFO_VALUE);
++		j713_hp_add(&p, J713_HP_ADP_FIFO_EN, J713_HP_FIFO_EN_BOTH, J713_HP_FIFO_EN_BOTH);
++		j713_hp_add(&p, J713_HP_SYNC_STATUS, J713_HP_EN, J713_HP_EN);
++		j713_hp_add(&p, J713_HP_MCLK_STATUS, J713_HP_EN, J713_HP_EN);
++		break;
++	case J713_HP_PORT_OPEN:
++		j713_hp_add(&p, J713_HP_PORT_CLOCK_SEL, ~0U,
++			    (sel & ~J713_HP_PORT_CLOCK_MASK) | J713_HP_PORT_CLOCK);
++		j713_hp_add(&p, J713_HP_PORT_ENABLES, ~0U, en | 2);
++		j713_hp_add(&p, J713_HP_PORT_ENABLES, ~0U, en | 6);
++		j713_hp_add(&p, J713_HP_PORT_DATA_SEL, ~0U, data | J713_HP_PORT_DATA);
++		j713_hp_add(&p, J713_HP_PORT_ENABLES, ~0U, en | 14);
++		break;
++	case J713_HP_TEARDOWN:
++		/* Reverse of PORT_OPEN, as the speaker's j713_port_close(). */
++		j713_hp_add(&p, J713_HP_PORT_ENABLES, 8, 0);
++		j713_hp_add(&p, J713_HP_PORT_DATA_SEL, ~0U, data);
++		j713_hp_add(&p, J713_HP_PORT_ENABLES, 12, 0);
++		j713_hp_add(&p, J713_HP_PORT_ENABLES, ~0U, en);
++		j713_hp_add(&p, J713_HP_PORT_CLOCK_SEL, ~0U, sel);
++		j713_hp_add(&p, J713_HP_SYNC_STATUS, J713_HP_EN, 0);
++		j713_hp_add(&p, J713_HP_MCLK_STATUS, J713_HP_EN, 0);
++		j713_hp_add(&p, J713_HP_ADP_FIFO_EN, J713_HP_FIFO_EN_BOTH, 0);
++		break;
++	default:
++		return -EINVAL;
++	}
++	return j713_hp_finish(&p, out);
++}
++
++/*
++ * ADMAC channel 5's own words, offsets from J713_HP_RX_DMA_PHYS, in place
++ * of dmaengine_slave_config() (apple-admac's RX setter is channel 1 only).
++ * BUS_WIDTH keeps bits 31:8 (reset value 0xf00).
++ */
++static inline int j713_hp_rx_dma_plan(struct j713_hp_plan *out)
++{
++	struct j713_hp_plan p = { .count = 0 };
++
++	if (!out)
++		return -EINVAL;
++	j713_hp_add(&p, J713_HP_DMA_BUS_WIDTH, J713_HP_DMA_BUS_MASK, J713_HP_DMA_BUS_32BIT);
++	j713_hp_add(&p, J713_HP_DMA_FIFOCTL, ~0U, J713_HP_DMA_FIFOCTL_VALUE);
++	return j713_hp_finish(&p, out);
++}
++
++/*
++ * Stage dir's enable on or off and return the next active mask
++ * (BIT(J713_HP_TX) | BIT(J713_HP_RX), kept by the caller under its lock).
++ * The shape of the speaker's m4_t8132_build_stage(), on bit 2, with the
++ * clear-first prefix that consumes a staged clear left by an earlier run.
++ * OMUX 2 (the frame to port 2) is set by whichever direction starts first
++ * and cleared by the last to stop: its writes appear only while the other
++ * direction is off. The writes are emitted even when the mask does not
++ * change (the guard's "stop again"). An unknown dir gives no writes.
++ */
++static inline u32 j713_hp_stage(u32 active, enum j713_hp_dir dir, bool on,
++				struct j713_hp_plan *out)
++{
++	const struct j713_hp_direction *d;
++	bool other;
++
++	if (!out)
++		return active;
++	*out = (struct j713_hp_plan){ .count = 0 };
++	if (dir != J713_HP_TX && dir != J713_HP_RX)
++		return active;
++	d = &j713_hp_dirs[dir];
++	other = active & (1U << !dir);
++
++	if (!other)
++		j713_hp_add(out, J713_HP_SYNC_OMUX_ENABLE_CLR, ~0U, J713_HP_BIT);
++	j713_hp_add(out, d->enable_clr, ~0U, J713_HP_BIT);
++	j713_hp_add(out, J713_HP_ALIGNED_ENABLE_TRIGGER, ~0U, 1);
++	if (!on)
++		return active & ~(1U << dir);
++	if (!other)
++		j713_hp_add(out, J713_HP_SYNC_OMUX_ENABLE_SET, ~0U, J713_HP_BIT);
++	j713_hp_add(out, d->enable_set, ~0U, J713_HP_BIT);
++	j713_hp_add(out, J713_HP_ALIGNED_ENABLE_TRIGGER, ~0U, 1);
++	return active | (1U << dir);
++}
++
++/* What prepare does, in this order; busy excludes everything else. */
++struct j713_hp_prep {
++	bool busy;		/* refuse: the other direction holds a cluster that differs */
++	bool guard_other;	/* the other direction's enable must read clear first */
++	bool teardown;		/* TEARDOWN: the clocked cluster differs from the recipe */
++	bool program;		/* mck2 to nco3, PROGRAM, PORT_OPEN */
++	bool reset;		/* this direction's serializer reset */
++};
++
++/*
++ * prepared, active: BIT(dir) masks as the driver keeps them. clocked:
++ * cluster 2's clocks run. recipe_ok: clocked, and PROGRAM and PORT_OPEN
++ * read back as written. Never TEARDOWN or PROGRAM while the other
++ * direction runs, or while it is prepared on a clocked cluster; reprogram
++ * an unclocked cluster even if the other direction is prepared (it cannot
++ * run without clocks: resume after power loss). Never reset RX while TX
++ * runs: that case was never tested.
++ */
++static inline struct j713_hp_prep j713_hp_prepare(enum j713_hp_dir dir, u32 prepared,
++						  u32 active, bool clocked,
++						  bool recipe_ok)
++{
++	u32 other = 1U << !dir;
++	struct j713_hp_prep a = { .busy = false };
++
++	if (clocked && recipe_ok) {
++		a.reset = !(dir == J713_HP_RX && (active & (1U << J713_HP_TX)));
++	} else if ((active & other) || (clocked && (prepared & other))) {
++		a.busy = true;
++	} else {
++		a.guard_other = true;
++		a.teardown = clocked;
++		a.program = true;
++		a.reset = true;
++	}
++	return a;
++}
++
++/* The staged registers are write-only (they read back 0): never verified. */
++static inline bool j713_hp_write_only(u32 offset)
++{
++	switch (offset) {
++	case J713_HP_SYNC_OMUX_ENABLE_SET:
++	case J713_HP_SYNC_OMUX_ENABLE_CLR:
++	case J713_HP_RX_ENABLE_SET:
++	case J713_HP_RX_ENABLE_CLR:
++	case J713_HP_TX_ENABLE_SET:
++	case J713_HP_TX_ENABLE_CLR:
++	case J713_HP_ALIGNED_ENABLE_TRIGGER:
++		return true;
++	}
++	return false;
++}
++
++/*
++ * True if write i is the last one to its register in the plan, so its
++ * masked value is what the register holds once the plan has run.
++ */
++static inline bool j713_hp_final(const struct j713_hp_plan *p, u32 i)
++{
++	u32 j;
++
++	for (j = i + 1; j < p->count; j++)
++		if (p->writes[j].offset == p->writes[i].offset)
++			return false;
++	return true;
++}
++#endif

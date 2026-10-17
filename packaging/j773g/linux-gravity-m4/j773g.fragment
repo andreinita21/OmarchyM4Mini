@@ -15,6 +15,9 @@ CONFIG_SND_SOC_APPLE_T8132_SPEAKER=m
 CONFIG_SND_SOC_TAS2764=m
 CONFIG_SND_SOC_APPLE_MCA=m
 CONFIG_SND_SOC_APPLE_MACAUDIO=n
+# 3.5 mm jack (CS42L84 on MCA cluster 2), j773g-headphones.patch.
+CONFIG_SND_SOC_APPLE_T8132_HEADPHONES=m
+CONFIG_SND_SOC_CS42L84=m
 
 # Crash console for the next boot (tools/j773g/init prints it; so can
 # /sys/fs/pstore on the installed system).
