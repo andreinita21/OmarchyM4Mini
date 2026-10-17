@@ -17,9 +17,10 @@
  * The state cells sit at leg_scrpad + 1 / + 2 / + 0xf, as on every Apple
  * family in tree (T6030 Chapel has the same 0xf800 / 0x2001 / 0x2100 triple).
  *
- * UNVERIFIED on J773g hardware. Built into the linux-gravity-m4 DTB (pkgrel 5)
- * and ladder group PMU; test with `poweroff -f`
- * from the shell: the mini must stay off, not restart.
+ * Built into the linux-gravity-m4 DTB (pkgrel 5) and ladder group PMU.
+ * Verified on the J773g 2026-10-17 (installed Omarchy, stage 2 with this DTB):
+ * spmi_nvmem0 lists the cells, macsmc-reboot and macsmc-rtc bind, rtc0 keeps
+ * time, and `systemctl poweroff` turns the mini fully off (power LED off).
  */
 
 #include <dt-bindings/spmi/spmi.h>

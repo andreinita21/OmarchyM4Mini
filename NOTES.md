@@ -600,3 +600,44 @@ Next step: ladder kernel with DPTX -> g6-display over the proxy (HDMI must
   volatile; the g6-shell chroot found no journal files). ufw: default DROP,
   only 53317 open; 22/tcp added by hand in /etc/ufw/user.rules on the mini
   (not in the image).
+
+## Setup 12 (2026-10-17 evening): targets after the first installed boot
+
+Targets: multicore, poweroff, Wi-Fi, GPU, native USB-C video. Merged
+upstream/develop (206 commits). SSH: Linux andrei@192.168.100.95 (key
+installed); macOS on the mini has Remote Login on, same IP, different host
+keys (use -o HostKeyAlias=markIV-macos). Startup disk set to the Gravity
+stub from macOS (bless --mount "/Volumes/Gravity Linux" --setBoot); after a
+failed boot iBoot falls back to macOS, from where the ESP (disk0s4,
+/Volumes/EFI) can be fixed over SSH.
+
+- Wi-Fi: not a mini problem. "Homenetwork 5G" router (192.168.0.1) answers
+  ARP/ping but returns "Destination Net Unreachable" and refuses DNS: its
+  uplink is down (other devices fail too). On "andrei 5G": HE160, -70 dBm,
+  247 Mbit/s download, DNS and HTTPS fine. NM priorities: andrei 5G 20,
+  andrei 2.4G 10. brcmfmac still logs join_pref -52 (harmless so far).
+- Poweroff: FIXED and verified (docs/j773g-poweroff.md). The PMU dtsi is in
+  linux-gravity-m4 pkgrel 5; on the mini the DTB was installed by hand into
+  /usr/lib/modules/7.1.13-1-4-ARCH/dtbs (stock copy in /root/j773g-backup)
+  until pkgrel 5 is built and installed. A pacman update of the pkgrel 4
+  kernel would bring the stock DTB back (no breakage, poweroff regresses).
+- Multicore: the live /proc/iomem has a 384 KiB System RAM gap at
+  0x10002e28000..0x10002e87fff between the phram/ADT region
+  (0x10002db8000 + 0x70000) and the reserved boot image at 0x10002e88000:
+  the M4 Air's TrustCache layout (docs/j713-smp-trustcache.md). Gravity's
+  m1n1 reserves only the 48 KiB CTRR range, not CTRR_D. A patch reserving
+  CTRR_D from s3_0_c11_c0_2/3 in dt_set_memory (m1n1 pkgrel 4) booted
+  black and reset into iBoot's "needs to be reinstalled": no journal, no
+  pstore. Same stage 2 with the unpatched m1n1 boots. Patch unwired, kept
+  as packaging/j773g/m1n1-gravity/ctrr-d-reserve.patch. Next: proxy session
+  (USB-C cable connected) to read CTRR_D and the ADT memory-map live and
+  boot with a per-boot reservation, as tools/air_trustcache.py does.
+  idle=nop stays (cpuidle-apple has no T8132; WFI loses state).
+- Limine: extra entry "Omarchy SMP test" (same UKI, no nosmp, loglevel=7,
+  panic=10) appended to /boot/efi/limine.conf; default_entry unchanged.
+  Backup /root/j773g-backup/limine.conf.pre-smp. limine-entry-tool may drop it.
+- GPU (research, not tried): Gravity's asahi_m4 gates on mBoot-18000.161.10,
+  which this mini has; the SUBMIT failures fit stock Arch Mesa (treats
+  G16 as G14). Path: package GravityLinux/mesa main @ 87ac51d411
+  (ES 3.0, ASAHI_MESA_DEBUG=nocompress) under /opt first, Hyprland env only.
+- speakersafetyd fails at every boot (start-limit-hit); not touched.

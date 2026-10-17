@@ -1,3 +1,11 @@
+NOT USED. Reserve CTRR_D (ADT + TrustCache) in m1n1's FDT on T8132.
+Hardware result on the J773g mini, 2026-10-17: stage 2 built with this
+patch (m1n1-gravity 1.6.1.gravity20261013-4) boots black and resets in a
+loop until iBoot reports "The version of macOS on the selected disk needs
+to be reinstalled". The same boot.bin with the unpatched m1n1 and the new
+PMU DTB boots, so the fault is here (register read or the reservation).
+Kept for the proxy investigation; see NOTES.md.
+
 --- a/src/cpu_regs.h
 +++ b/src/cpu_regs.h
 @@ -809,3 +809,5 @@

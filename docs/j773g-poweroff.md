@@ -43,3 +43,19 @@ button. Fail: it restarts → record the dmesg lines in NOTES.md.
 
 If it passes, this is a candidate patch for GravityLinux (`t8132.dtsi`,
 since Abbey is the T8132 PMU on every board) and for upstream Asahi.
+
+## Result (2026-10-17, installed Omarchy)
+
+Stage 2 = m1n1-gravity pkgrel 3 + `t8132-j773g.dtb` with this dtsi (built
+the kbuild way; the same build of the unmodified tree is byte-identical to
+the packaged DTB) + U-Boot, written by `update-m1n1`:
+
+- `/sys/bus/nvmem/devices/spmi_nvmem0/cells/` lists all eight cells;
+  `macsmc-reboot` and `macsmc-rtc` are bound (`registered as rtc0`), and the
+  "Failed to locate of_node" lines are gone.
+- `rtc0` reads the correct UTC time; before, the clock resumed from the last
+  shutdown.
+- `systemctl poweroff`: the mini turned fully off, power LED off (owner
+  observation), and powered on normally with the button.
+
+Not yet tested: restart from Linux with the cells active.
