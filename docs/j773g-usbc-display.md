@@ -84,3 +84,33 @@ HPD. Cable orientation: upside down. Partner identity: id_header 0xc3249b00.
 Nothing else reacts: no ATC PHY, crossbar or DCP messages; `card1-Unknown-2/3`
 stay disconnected. Back left (port1) was busy with the keyboard receiver,
 back middle (port0) with the proxy cable.
+
+## Night of 2026-10-17/18: what works, what blocks
+
+RAM boots of a test kernel through the proxy (watchdog-protected,
+[patches-kernel/j773g-usbc-dp/](../patches-kernel/j773g-usbc-dp/)) take the
+G8 on the back-right port as far as: crossbar switched to dcpext0 (t6020
+layout, input 1), SN201202X DP pin assignment E + HPD forwarded, DCP
+connects DPTX port 0, PHY activate, 4 lanes. The DCP's AUX transactions get
+no answer: the T8132 ATC lpdptx AUX configuration is not the T8103
+generation's (register readings in the patches README). No Asahi branch has
+T8122/T8132 DP AUX code (fairydust has the same FIXMEs; sven/atcphy,
+atcphy/2025-experiments and dp-altmode-WIP predate T8122).
+
+**Next: trace macOS** driving the G8 under the m1n1 hypervisor.
+- Upstream m1n1 main (5531393a, M4/SPTM hypervisor support since
+  2026-10-16) builds for the mini with `NO_DISPLAY=1`; it needs kb2uka's
+  `dockchannel-tx-bound.patch` (upstream still spins on DATA_TX_FREE, issue
+  #82). Built: `build/j773g/hv/m1n1.{bin,macho}` (git-ignored). The first
+  chainload attempt, without that patch, hung the mini.
+- Tracer: [tools/j773g/hv/trace_j773g_dp.py](../tools/j773g/hv/trace_j773g_dp.py)
+  (atc-phy3 + atc3-dpxbar, SYNC).
+- Booting macOS as a guest needs a macOS whose boot policy is "permissive"
+  with m1n1 as custom kernel (`kmutil configure-boot` in recoveryOS), plus its
+  kernelcache, SPTM and TXM images from Preboot. Either the main macOS
+  (reversible) or a second macOS volume used only for tracing. Owner's
+  decision.
+- Morning recovery: the mini is stuck in the chainloaded m1n1; power-cycle,
+  hold the power button for the startup options, pick macOS; from macOS the
+  ESP's `m1n1/boot.bin` goes back to the Omarchy stage 2, then
+  `update-m1n1` in Omarchy refreshes it with the current DTB.
