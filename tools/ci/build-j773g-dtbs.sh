@@ -65,8 +65,10 @@ dtb() {  # dtb <name> <source lines...>
 dtb t8132-j773g '#include "t8132-j773g.dts"' \
   '#include "t8132-j773g-pmu.dtsi"' '#include "t8132-j773g-headphones.dtsi"'
 packaged=$(dtc -q -I dtb -O dts "$OUT/t8132-j773g.dtb")
+# Older dtc prints a decompiled string list as "a\0b", newer as "a", "b".
 for want in 'apple,j773g' 'apple,smc-reboot' 'apple,smc-rtc' 'cirrus,cs42l84'; do
-  grep -q "\"$want\"" <<<"$packaged" || { echo "packaged DTB lacks $want" >&2; exit 1; }
+  grep -qE "(\"|\\\\0)$want(\"|\\\\0)" <<<"$packaged" ||
+    { echo "packaged DTB lacks $want" >&2; grep -m3 'compatible' <<<"$packaged" >&2; exit 1; }
 done
 
 for rung in $(printf '%s\n' "${!RUNGS[@]}" | sort); do
