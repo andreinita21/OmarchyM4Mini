@@ -1,0 +1,173 @@
+From 49840d57974e4e11691edf4aaf86a20d1c3675ec Mon Sep 17 00:00:00 2001
+From: Cody Ho <codyho@stanford.edu>
+Date: Mon, 14 Sep 2026 23:50:58 -0700
+Subject: [PATCH] nvme: apple: Add T8132 ANS2 support
+
+T8132 requires the I/O submission and completion queue addresses to be
+registered after the queues are created. It also repurposes the old
+maximum-pending-commands register as a zero-based I/O queue size register.
+
+Add a post-creation queue registration callback and use it to program the
+T8132 registers with U-Boot's actual queue depth. Preserve the existing
+behavior for older Apple SoCs.
+
+Based on the Linux implementation by Yureka Lilian.
+
+Link: https://lore.kernel.org/linux-nvme/20260906-apple-nvme-t8132-v2-2-ac0328590823@cyberchaos.dev/
+Signed-off-by: Cody Ho <codyho@stanford.edu>
+Assisted-By: OpenAI Codex (gpt-6-astra, gpt-5.6-sol)
+---
+ drivers/nvme/nvme.c       |  5 ++++
+ drivers/nvme/nvme.h       |  9 +++++++
+ drivers/nvme/nvme_apple.c | 51 +++++++++++++++++++++++++++++++++++----
+ 3 files changed, 60 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/nvme/nvme.c b/drivers/nvme/nvme.c
+index 147a104149e..b9cfe755cac 100644
+--- a/drivers/nvme/nvme.c
++++ b/drivers/nvme/nvme.c
+@@ -555,6 +555,7 @@ int nvme_set_features(struct nvme_dev *dev, unsigned fid, unsigned dword11,
+ static int nvme_create_queue(struct nvme_queue *nvmeq, int qid)
+ {
+ 	struct nvme_dev *dev = nvmeq->dev;
++	struct nvme_ops *ops;
+ 	int result;
+ 
+ 	nvmeq->cq_vector = qid - 1;
+@@ -566,6 +567,10 @@ static int nvme_create_queue(struct nvme_queue *nvmeq, int qid)
+ 	if (result < 0)
+ 		goto release_cq;
+ 
++	ops = (struct nvme_ops *)dev->udev->driver->ops;
++	if (ops && ops->register_queue)
++		ops->register_queue(nvmeq);
++
+ 	nvme_init_queue(nvmeq, qid);
+ 
+ 	return result;
+diff --git a/drivers/nvme/nvme.h b/drivers/nvme/nvme.h
+index bc1d612dde4..282d8686be9 100644
+--- a/drivers/nvme/nvme.h
++++ b/drivers/nvme/nvme.h
+@@ -672,6 +672,15 @@ struct nvme_ops {
+ 	 * Return: 0 if OK, -ve on error
+ 	 */
+ 	int (*setup_queue)(struct nvme_queue *nvmeq);
++	/**
++	 * register_queue - Controller-specific NVM Express queue registration.
++	 *
++	 * This is called after the Create Completion Queue and Create Submission
++	 * Queue commands have completed.
++	 *
++	 * @nvmeq: NVM Express queue
++	 */
++	void (*register_queue)(struct nvme_queue *nvmeq);
+ 	/**
+ 	 * submit_cmd - Controller-specific NVM Express command submission.
+ 	 *
+diff --git a/drivers/nvme/nvme_apple.c b/drivers/nvme/nvme_apple.c
+index 6b104848639..e25ea126165 100644
+--- a/drivers/nvme/nvme_apple.c
++++ b/drivers/nvme/nvme_apple.c
+@@ -21,7 +21,10 @@
+ #define  REG_CPU_CTRL_RUN	BIT(4)
+ 
+ /* Apple NVMe registers */
+-#define ANS_MAX_PEND_CMDS_CTRL	0x01210
++#define ANS_T8132_IOQ_CMDS	0x01200
++#define ANS_T8132_IOQ_CQES	0x01208
++#define ANS_T8132_IOQ_SIZE	0x01210
++#define ANS_T8103_MAX_PEND_CMDS_CTRL	0x01210
+ #define  ANS_MAX_QUEUE_DEPTH	64
+ #define ANS_BOOT_STATUS		0x01300
+ #define  ANS_BOOT_STATUS_OK	0xde71ce55
+@@ -60,8 +63,13 @@ struct ans_nvmmu_tcb {
+ #define ANS_NVMMU_TCB_WRITE	BIT(0)
+ #define ANS_NVMMU_TCB_READ	BIT(1)
+ 
++struct apple_nvme_hw {
++	bool needs_ioq_register;
++};
++
+ struct apple_nvme_priv {
+ 	struct nvme_dev ndev;
++	const struct apple_nvme_hw *hw;
+ 	void *base;		/* NVMe registers */
+ 	void *asc;		/* ASC registers */
+ 	struct reset_ctl_bulk resets; /* ASC reset */
+@@ -110,6 +118,22 @@ static int apple_nvme_setup_queue(struct nvme_queue *nvmeq)
+ 	return 0;
+ }
+ 
++static void apple_nvme_register_queue(struct nvme_queue *nvmeq)
++{
++	struct apple_nvme_priv *priv =
++		container_of(nvmeq->dev, struct apple_nvme_priv, ndev);
++	u32 qsize;
++
++	if (!priv->hw->needs_ioq_register)
++		return;
++
++	/* T8132 ignores qsize in the Create CQ/SQ commands. */
++	qsize = nvmeq->q_depth - 1;
++	nvme_writeq((ulong)nvmeq->cqes, priv->base + ANS_T8132_IOQ_CQES);
++	nvme_writeq((ulong)nvmeq->sq_cmds, priv->base + ANS_T8132_IOQ_CMDS);
++	writel(qsize | (qsize << 16), priv->base + ANS_T8132_IOQ_SIZE);
++}
++
+ static void apple_nvme_submit_cmd(struct nvme_queue *nvmeq,
+ 				  struct nvme_command *cmd)
+ {
+@@ -203,6 +227,8 @@ static int apple_nvme_probe(struct udevice *dev)
+ 	u32 ctrl, stat, phandle;
+ 	int ret;
+ 
++	priv->hw = (void *)dev_get_driver_data(dev);
++
+ 	priv->base = dev_read_addr_ptr(dev);
+ 	if (!priv->base)
+ 		return -EINVAL;
+@@ -251,8 +277,10 @@ static int apple_nvme_probe(struct udevice *dev)
+ 	}
+ 
+ 	writel(ANS_LINEAR_SQ_CTRL_EN, priv->base + ANS_LINEAR_SQ_CTRL);
+-	writel(((ANS_MAX_QUEUE_DEPTH << 16) | ANS_MAX_QUEUE_DEPTH),
+-	       priv->base + ANS_MAX_PEND_CMDS_CTRL);
++	/* T8132 repurposes this register as IOQ_SIZE. */
++	if (!priv->hw->needs_ioq_register)
++		writel(((ANS_MAX_QUEUE_DEPTH << 16) | ANS_MAX_QUEUE_DEPTH),
++		       priv->base + ANS_T8103_MAX_PEND_CMDS_CTRL);
+ 
+ 	strcpy(priv->ndev.vendor, "Apple");
+ 
+@@ -290,13 +318,26 @@ static int apple_nvme_remove(struct udevice *dev)
+ 
+ static const struct nvme_ops apple_nvme_ops = {
+ 	.setup_queue = apple_nvme_setup_queue,
++	.register_queue = apple_nvme_register_queue,
+ 	.submit_cmd = apple_nvme_submit_cmd,
+ 	.complete_cmd = apple_nvme_complete_cmd,
+ };
+ 
++static const struct apple_nvme_hw apple_nvme_t8103_hw = {
++	.needs_ioq_register = false,
++};
++
++static const struct apple_nvme_hw apple_nvme_t8132_hw = {
++	.needs_ioq_register = true,
++};
++
+ static const struct udevice_id apple_nvme_ids[] = {
+-	{ .compatible = "apple,t8103-nvme-ans2" },
+-	{ .compatible = "apple,nvme-ans2" },
++	{ .compatible = "apple,t8103-nvme-ans2",
++	  .data = (ulong)&apple_nvme_t8103_hw },
++	{ .compatible = "apple,t8132-nvme-ans2",
++	  .data = (ulong)&apple_nvme_t8132_hw },
++	{ .compatible = "apple,nvme-ans2",
++	  .data = (ulong)&apple_nvme_t8103_hw },
+ 	{ /* sentinel */ }
+ };
+ 
+-- 
+2.47.3

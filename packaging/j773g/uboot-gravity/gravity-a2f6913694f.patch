@@ -1,0 +1,131 @@
+From a2f6913694ff26908c16948af3f8372429782263 Mon Sep 17 00:00:00 2001
+From: Niklas Sheth <hi@niklassheth.com>
+Date: Fri, 18 Sep 2026 20:14:22 -0400
+Subject: [PATCH] apple: Supply J773g Wi-Fi calibration alongside Bluetooth
+
+Share the bounded per-radio ESP loader with the WLAN brcm,cal-blob property. Respect the different byte orders of local-mac-address and local-bd-address, and retain existing DT calibration. Increase FDT padding to cover both maximum-size blobs plus normal fixups.
+
+Validated through the full m1n1/U-Boot/EFI Fedora boot: both DT properties match factory extraction, brcmfmac loads its platform calibration, and Bluetooth initializes with the DT-only BCM4388 driver fix. Host libfdt tests cover address byte order, existing properties, missing/invalid/short files, invalid addresses and insufficient DT space.
+
+Assisted-By: OpenAI Codex (GPT-6 Astra)
+Signed-off-by: Niklas Sheth <hi@niklassheth.com>
+---
+ arch/arm/mach-apple/board.c | 49 +++++++++++++++++++++----------------
+ configs/apple_m1_defconfig  |  2 +-
+ 2 files changed, 29 insertions(+), 22 deletions(-)
+
+diff --git a/arch/arm/mach-apple/board.c b/arch/arm/mach-apple/board.c
+index 3fb4e511..44a5ef25 100644
+--- a/arch/arm/mach-apple/board.c
++++ b/arch/arm/mach-apple/board.c
+@@ -1331,42 +1331,44 @@ int board_late_init(void)
+ }
+ 
+ /* Calibration belongs to one radio; never use a board-wide fallback file. */
+-static void apple_bluetooth_calibration(void *blob)
++static void apple_radio_calibration(void *blob, const char *compatible,
++				    const char *property, const char *address_property,
++				    const char *name, const char *kind, bool reverse)
+ {
+-	const char *property = "brcm,taurus-bf-cal-blob";
+ 	const unsigned char *address;
++	unsigned char mac[6];
+ 	loff_t size, actual;
+ 	char path[96];
+ 	char *devpart;
+ 	void *data;
+-	int node, len, ret;
++	int node, len, ret, i;
+ 
+-	if (fdt_node_check_compatible(blob, 0, "apple,j773g"))
+-		return;
+-
+-	node = fdt_node_offset_by_compatible(blob, -1, "pci14e4,5f72");
++	node = fdt_node_offset_by_compatible(blob, -1, compatible);
+ 	if (node < 0 || fdt_getprop(blob, node, property, NULL))
+ 		return;
+ 
+-	address = fdt_getprop(blob, node, "local-bd-address", &len);
+-	/* local-bd-address is little endian, unlike the factory MAC address. */
+-	if (!address || len != 6 || (address[5] & 1) ||
+-	    !memcmp(address, "\0\0\0\0\0\0", 6)) {
+-		printf("Bluetooth: missing or invalid radio address\n");
++	address = fdt_getprop(blob, node, address_property, &len);
++	if (!address || len != 6)
++		return;
++	/* Bluetooth's local-bd-address is little endian; Wi-Fi's MAC is not. */
++	for (i = 0; i < 6; i++)
++		mac[i] = address[reverse ? 5 - i : i];
++	if ((mac[0] & 1) || !memcmp(mac, "\0\0\0\0\0\0", 6)) {
++		printf("%s: invalid radio address\n", name);
+ 		return;
+ 	}
+ 	snprintf(path, sizeof(path),
+-		 "vendorfw/u-boot/brcm/brcmbt4388-%02x%02x%02x%02x%02x%02x-bf.bin",
+-		 address[5], address[4], address[3], address[2], address[1], address[0]);
++		 "vendorfw/u-boot/brcm/%s-%02x%02x%02x%02x%02x%02x-%s.bin",
++		 name, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], kind);
+ 
+ 	devpart = gravity_esp_devpart();
+ 	if (!*devpart || fs_set_blk_dev("nvme", devpart, FS_TYPE_FAT) ||
+ 	    fs_size(path, &size)) {
+-		printf("Bluetooth: no per-radio beamforming calibration on ESP\n");
++		printf("%s: no per-radio calibration on ESP\n", name);
+ 		return;
+ 	}
+ 	if (size < 4 || size > SZ_32K) {
+-		printf("Bluetooth: invalid beamforming calibration size\n");
++		printf("%s: invalid calibration size\n", name);
+ 		return;
+ 	}
+ 	data = memalign(ARCH_DMA_MINALIGN, ALIGN(size, ARCH_DMA_MINALIGN));
+@@ -1376,15 +1378,15 @@ static void apple_bluetooth_calibration(void *blob)
+ 	if (fs_set_blk_dev("nvme", devpart, FS_TYPE_FAT) ||
+ 	    fs_read(path, map_to_sysmem(data), 0, size, &actual) ||
+ 	    actual != size || memcmp(data, "BLOB", 4)) {
+-		printf("Bluetooth: cannot read valid beamforming calibration\n");
++		printf("%s: cannot read valid calibration\n", name);
+ 		goto out;
+ 	}
+ 	ret = fdt_setprop(blob, node, property, data, size);
+ 	if (ret)
+-		printf("Bluetooth: cannot add calibration to DT: %s\n", fdt_strerror(ret));
++		printf("%s: cannot add calibration to DT: %s\n", name, fdt_strerror(ret));
+ 	else
+-		printf("Bluetooth: loaded %lld bytes of per-radio beamforming calibration\n",
+-		       (long long)size);
++		printf("%s: loaded %lld bytes of per-radio calibration\n",
++		       name, (long long)size);
+ out:
+ 	free(data);
+ }
+@@ -1395,7 +1397,12 @@ int ft_board_setup(void *blob, struct bd_info *bd)
+ 	const char *stdoutname;
+ 	int node, ret;
+ 
+-	apple_bluetooth_calibration(blob);
++	if (!fdt_node_check_compatible(blob, 0, "apple,j773g")) {
++		apple_radio_calibration(blob, "pci14e4,5f72", "brcm,taurus-bf-cal-blob",
++					"local-bd-address", "brcmbt4388", "bf", true);
++		apple_radio_calibration(blob, "pci14e4,4434", "brcm,cal-blob",
++					"local-mac-address", "brcmfmac4388", "cal", false);
++	}
+ 
+ 	/*
+ 	 * Modify the "stdout-path" property under "/chosen" to point
+diff --git a/configs/apple_m1_defconfig b/configs/apple_m1_defconfig
+index e9fad56f..21194044 100644
+--- a/configs/apple_m1_defconfig
++++ b/configs/apple_m1_defconfig
+@@ -4,7 +4,7 @@ CONFIG_ARCH_APPLE=y
+ CONFIG_NR_DRAM_BANKS=32
+ CONFIG_DEFAULT_DEVICE_TREE="apple/t8103-j274"
+ CONFIG_SYS_BOOTM_LEN=0x800000
+-CONFIG_SYS_FDT_PAD=0x10000
++CONFIG_SYS_FDT_PAD=0x20000
+ CONFIG_SYS_LOAD_ADDR=0x0
+ CONFIG_BOOTDELAY=1
+ # CONFIG_AUTOBOOT_KEYED is not set
+-- 
+2.55.0
+

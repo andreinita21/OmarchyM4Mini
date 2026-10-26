@@ -1,0 +1,4 @@
+# /etc/default/update-m1n1 drop-in (sourced by update-m1n1): m1n1's stage 2 on
+# this mini carries only the J773g device tree. Keep omarchy-mac-boot's
+# LC_ALL=C and overlay handling, which run from the main file.
+DTBS=$(ls -d /usr/lib/modules/*-ARCH 2>/dev/null | sort -rV | head -1)/dtbs/t8132-j773g.dtb

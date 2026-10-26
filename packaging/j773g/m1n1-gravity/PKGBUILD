@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: MIT
+# m1n1 for the M4 Mac mini (J773g): GravityLinux's bootloader fork, the same
+# pin tools/j773g/inner-build.sh builds as build/j773g/m1n1-gravity/. Carries
+# T8132 NVMe, DCP firmware compatibility for macOS 26.6.2 and the T8132 GPU
+# platform data the DRM_ASAHI_M4 driver needs. Installed where asahi-scripts'
+# update-m1n1 looks (/usr/lib/asahi-boot/m1n1.bin), as m1n1 and m1n1-aurora are.
+# Based on the asahi-alarm m1n1 PKGBUILD by Jos Dehaes and Matthias Kurz.
+
+pkgname=m1n1-gravity
+pkgver=1.6.1.gravity20261013
+pkgrel=3
+pkgdesc='GravityLinux m1n1 (T8132 / M4 Mac mini support), NO_DISPLAY as Gravity ships it, bounded dockchannel console'
+_commit=7243b815c4d78f39047172b866dc6518d5cab11d
+_artwork_commit=e613a87e526f8fec439c4129e69dd2821b38d258   # the fork's artwork submodule
+arch=('aarch64')
+url='https://github.com/GravityLinux/bootloader'
+license=('GPL-2.0-or-later' 'MIT' 'CC0-1.0' 'OFL-1.1-RFN' 'Zlib' 'BSD-2-Clause OR GPL-2.0-or-later' 'BSD-3-Clause OR GPL-2.0-or-later' 'MIT OR Apache-2.0')
+provides=('m1n1=1.6.1')
+conflicts=('m1n1' 'm1n1-aurora')
+makedepends=('imagemagick' 'rustup')
+options=('!strip' '!debug')
+source=(
+  "bootloader-${_commit}.tar.gz::https://github.com/GravityLinux/bootloader/archive/${_commit}.tar.gz"
+  "artwork-gravity-${_artwork_commit}.tar.gz::https://github.com/GravityLinux/artwork/archive/${_artwork_commit}.tar.gz"
+  # Kb2uka/Omarchy-M4-Native test-issue82-dockchannel-1 (MIT, KB2UKA): m1n1's
+  # dockchannel UART writer spun forever when nothing drained the TX FIFO (an
+  # M4 Air stuck on the m1n1 logo). Every wait is bounded; the HDMI framebuffer
+  # and the USB proxy are untouched. Same console path on the mini.
+  dockchannel-tx-bound.patch
+)
+sha256sums=('e945205632f2676d35071b4173dde08cd01e294f4c6618af65a064a38db51caa'
+            '58bf5f963f8506819732da12bb012f27e06bffae2a75f1eb3173378d05534fc8'
+            '8a9cf9f7db71212d23718cea09ccfe0abdd50bbdbd3b4180eaf575d388c30311')
+
+prepare() {
+  rm -rf "bootloader-${_commit}/artwork"
+  cp -r "artwork-${_artwork_commit}" "bootloader-${_commit}/artwork"
+  patch -d "bootloader-${_commit}" -p1 < dockchannel-tx-bound.patch
+  rustup target add aarch64-unknown-none-softfloat
+}
+
+build() {
+  cd "bootloader-${_commit}"
+  # gcc build (USE_CLANG fails on an aarch64 host, see tools/j773g/inner-build.sh);
+  # LOGO=bootlogo appends the chainload logo payload built from the fork's own
+  # data/bootlogo_{256,128}.png (already Gravity artwork); the RPM does the same
+  # with gravity-logos' copies.
+  # NO_DISPLAY=1 as Gravity's RPM (m1n1-no-display.patch) and installer build
+  # both of their stages: on the M4 mini m1n1's DCP bring-up crashes the
+  # display coprocessor and HDMI stays dead for the kernel. The boot
+  # framebuffer is left as iBoot handed it over; the kernel's DCP driver
+  # brings HDMI up.
+  make ARCH= RELEASE=1 NO_DISPLAY=1 LOGO=bootlogo M1N1_VERSION_TAG="v1.6.1-gravity-${_commit:0:10}"
+}
+
+package() {
+  cd "bootloader-${_commit}"
+  install -Dm644 build/m1n1.bin "$pkgdir/usr/lib/asahi-boot/m1n1.bin"
+  install -Dm644 LICENSE.GPL2 "$pkgdir/usr/share/licenses/$pkgname/LICENSE.GPL2"
+  install -Dm644 LICENSE.MIT "$pkgdir/usr/share/licenses/$pkgname/LICENSE.MIT"
+  install -m644 -t "$pkgdir/usr/share/licenses/$pkgname/" 3rdparty_licenses/*
+}

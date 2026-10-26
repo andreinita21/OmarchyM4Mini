@@ -1,0 +1,374 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * J773g layer: USB host on the Thunderbolt/USB-C ports.
+ *
+ * Why this is the third layer: a USB keyboard is part of the win condition,
+ * and the rear Thunderbolt ports are the only USB paths whose SoC nodes
+ * the T8132 patches already carry (atc0/atc1, patches 0003, 0006, 0012).
+ *
+ * Mini port inventory (UNVERIFIED, ioreg):
+ *   usb-drd0 port-number 1  atc-phy0  hpm0 (SPMI USID 0xC, port 1)  rear TB
+ *   usb-drd1 port-number 2  atc-phy1  hpm1 (SPMI USID 0xA, port 2)  rear TB
+ *   usb-drd2 port-number 3  atc-phy2  no PD controller; usb2/usb3 hub ports
+ *            1-2 under it -> GL3590 hub (firmware on SPI3 NOR, usb3hub-fw)
+ *            -> the two front USB-C ports
+ *   usb-drd3 port-number 4  atc-phy3  hpm3 (SPMI USID 0x8, port 4)  rear TB
+ *   Physical ports (GravityLinux t8132-j773g.dts, hardware-tested):
+ *   atc0 = back-middle (also the DFU port, Apple support 120694),
+ *   atc1 = back-left, atc3 = back-right, atc2 = both front ports via hub.
+ *
+ * VERIFIED-J713 / UNVERIFIED-J773g (identical in ioreg):
+ *   dwc3_0 0x4_02280000 IRQ 1279, darts 0x4_02f00000 + 0x4_02f80000 IRQ 1283
+ *   with stream IDs <1,14>; dwc3_1 0x4_0a280000 IRQ 1341, darts IRQ 1345.
+ *   SPMI controller nub-spmi-a0 0x3_88908000 IRQ 520; hpm0 IRQs 11/17/19,
+ *   hpm1 IRQs 37/43/45, hpm3 IRQs 63/69/71. The "select" IRQs 13/39/65
+ *   (irq + 2) match GravityLinux 4cb9998f58, which fixed hpm3's select line
+ *   to 65 and tested it on an M4 mini.
+ */
+
+/* ---- Ports 0 and 1: SoC nodes already in t8132.dtsi after patch 0003 ---- */
+
+&dwc3_0 {
+	status = "okay";
+};
+
+&dwc3_0_dart_0 {
+	status = "okay";
+};
+
+&dwc3_0_dart_1 {
+	status = "okay";
+};
+
+&dwc3_1 {
+	status = "okay";
+};
+
+&dwc3_1_dart_0 {
+	status = "okay";
+};
+
+&dwc3_1_dart_1 {
+	status = "okay";
+};
+
+/* ---- Type-C PD controllers over SPMI (mini wiring, replaces the J713
+ *      t8132-usbpd-spmi.dtsi which is labelled for the Air) ---- */
+
+&nub_spmi_a0 {
+	status = "okay";
+
+	hpm0: usb-pd@c {
+		compatible = "apple,sn201202x";
+		reg = <0xc SPMI_USID>;
+		interrupts = <11 IRQ_TYPE_EDGE_RISING>,
+			<13 IRQ_TYPE_EDGE_RISING>,
+			<17 IRQ_TYPE_EDGE_RISING>,
+			<19 IRQ_TYPE_EDGE_RISING>;
+		interrupt-names = "irq", "select", "sleep", "wake";
+
+		typec0: connector {
+			compatible = "usb-c-connector";
+			label = "USB-C Back-middle";
+			power-role = "dual";
+			data-role = "dual";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 {
+					reg = <0>;
+					typec0_connector_hs: endpoint {
+						remote-endpoint = <&dwc3_0_hs>;
+					};
+				};
+				port@1 {
+					reg = <1>;
+					typec0_connector_ss: endpoint {
+						remote-endpoint = <&atcphy0_typec_lanes>;
+					};
+				};
+			};
+		};
+	};
+
+	hpm1: usb-pd@a {
+		compatible = "apple,sn201202x";
+		reg = <0xa SPMI_USID>;
+		interrupts = <37 IRQ_TYPE_EDGE_RISING>,
+			<39 IRQ_TYPE_EDGE_RISING>,
+			<43 IRQ_TYPE_EDGE_RISING>,
+			<45 IRQ_TYPE_EDGE_RISING>;
+		interrupt-names = "irq", "select", "sleep", "wake";
+
+		typec1: connector {
+			compatible = "usb-c-connector";
+			label = "USB-C Back-left";
+			power-role = "dual";
+			data-role = "dual";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 {
+					reg = <0>;
+					typec1_connector_hs: endpoint {
+						remote-endpoint = <&dwc3_1_hs>;
+					};
+				};
+				port@1 {
+					reg = <1>;
+					typec1_connector_ss: endpoint {
+						remote-endpoint = <&atcphy1_typec_lanes>;
+					};
+				};
+			};
+		};
+	};
+
+	/* Third rear port. UNVERIFIED: ioreg names it hpm3, port-number 4,
+	 * USID 0x8, IRQs 63/69/71 (the J713 file calls the same USID
+	 * hpm5). Its connector graph needs the ATC3 nodes below. */
+	hpm3: usb-pd@8 {
+		compatible = "apple,sn201202x";
+		reg = <0x8 SPMI_USID>;
+		interrupts = <63 IRQ_TYPE_EDGE_RISING>,
+			<65 IRQ_TYPE_EDGE_RISING>,
+			<69 IRQ_TYPE_EDGE_RISING>,
+			<71 IRQ_TYPE_EDGE_RISING>;
+		interrupt-names = "irq", "select", "sleep", "wake";
+#ifdef J773G_LAYER_USB_ATC23
+		typec3: connector {
+			compatible = "usb-c-connector";
+			label = "USB-C Back-right";
+			power-role = "dual";
+			data-role = "dual";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 {
+					reg = <0>;
+					typec3_connector_hs: endpoint {
+						remote-endpoint = <&dwc3_3_hs>;
+					};
+				};
+				port@1 {
+					reg = <1>;
+					typec3_connector_ss: endpoint {
+						remote-endpoint = <&atcphy3_typec_lanes>;
+					};
+				};
+			};
+		};
+#endif
+	};
+};
+
+&dwc3_0_hs {
+	remote-endpoint = <&typec0_connector_hs>;
+};
+
+&dwc3_1_hs {
+	remote-endpoint = <&typec1_connector_hs>;
+};
+
+&atcphy0_typec_lanes {
+	remote-endpoint = <&typec0_connector_ss>;
+};
+
+&atcphy1_typec_lanes {
+	remote-endpoint = <&typec1_connector_ss>;
+};
+
+#ifdef J773G_LAYER_USB_ATC23
+/* ---- ATC2 and ATC3: new SoC nodes, J773g only (J713 has them depopulated).
+ *
+ * Every address and IRQ below is UNVERIFIED: read from ioreg on 2026-10-13
+ * and laid out exactly like the existing atc0/atc1 nodes (same window sizes,
+ * same +0x8000000 stride per instance, DART stream IDs <1,14> per the
+ * dart-usb2/dart-usb3 "sid" property). PMGR providers ps_atc2_* and
+ * ps_atc3_* are real (non-virtual) records on this mini, unlike J713.
+ *
+ * ATC2 has no PD controller: it feeds the GL3590 hub behind the front
+ * USB-C ports, so it is wired as a fixed host without a connector graph.
+ * Whether the hub needs its SPI3 firmware loaded by the OS is unknown.
+ * ---- */
+
+&soc {
+	dwc3_2: usb@412280000 {
+		compatible = "apple,t8132-dwc3", "apple,t8103-dwc3";
+		reg = <0x4 0x12280000 0x0 0xcd00>,
+		      <0x4 0x1228cd00 0x0 0x3200>;
+		reg-names = "dwc3-core", "dwc3-apple";
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 1403 IRQ_TYPE_LEVEL_HIGH>;
+		dr_mode = "host";
+		iommus = <&dwc3_2_dart_0 1>,
+		         <&dwc3_2_dart_1 14>;
+		power-domains = <&ps_atc2_usb>;
+		resets = <&atcphy2>;
+		phys = <&atcphy2 PHY_TYPE_USB2>, <&atcphy2 PHY_TYPE_USB3>;
+		phy-names = "usb2-phy", "usb3-phy";
+		status = "okay";
+	};
+
+	dwc3_2_dart_0: iommu@412f00000 {
+		compatible = "apple,t8132-dart", "apple,t8110-dart";
+		reg = <0x4 0x12f00000 0x0 0x4000>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 1407 IRQ_TYPE_LEVEL_HIGH>;
+		power-domains = <&ps_atc2_usb>;
+		#iommu-cells = <1>;
+		status = "okay";
+	};
+
+	dwc3_2_dart_1: iommu@412f80000 {
+		compatible = "apple,t8132-dart", "apple,t8110-dart";
+		reg = <0x4 0x12f80000 0x0 0x4000>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 1407 IRQ_TYPE_LEVEL_HIGH>;
+		power-domains = <&ps_atc2_usb>;
+		#iommu-cells = <1>;
+		status = "okay";
+	};
+
+	atcphy2: phy@413000000 {
+		compatible = "apple,t8132-atcphy", "apple,t8122-atcphy";
+		reg = <0x4 0x13000000 0x0 0x4c000>,
+		      <0x4 0x13050000 0x0 0x8000>,
+		      <0x4 0x10000000 0x0 0x8000>,
+		      <0x4 0x12a90000 0x0 0x4000>,
+		      <0x4 0x12a84000 0x0 0x4000>;
+		reg-names = "core", "lpdptx", "axi2af", "usb2phy",
+		            "pipehandler";
+		#phy-cells = <1>;
+		#reset-cells = <0>;
+		power-domains = <&ps_atc2_usb>;
+	};
+
+	dwc3_3: usb@41a280000 {
+		compatible = "apple,t8132-dwc3", "apple,t8103-dwc3";
+		reg = <0x4 0x1a280000 0x0 0xcd00>,
+		      <0x4 0x1a28cd00 0x0 0x3200>;
+		reg-names = "dwc3-core", "dwc3-apple";
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 1465 IRQ_TYPE_LEVEL_HIGH>;
+		dr_mode = "otg";
+		usb-role-switch;
+		role-switch-default-mode = "host";
+		iommus = <&dwc3_3_dart_0 1>,
+		         <&dwc3_3_dart_1 14>;
+		power-domains = <&ps_atc3_usb>;
+		resets = <&atcphy3>;
+		phys = <&atcphy3 PHY_TYPE_USB2>, <&atcphy3 PHY_TYPE_USB3>;
+		phy-names = "usb2-phy", "usb3-phy";
+		status = "okay";
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				dwc3_3_hs: endpoint {
+					remote-endpoint = <&typec3_connector_hs>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				dwc3_3_ss: endpoint {
+					remote-endpoint = <&atcphy3_usb3>;
+				};
+			};
+		};
+	};
+
+	dwc3_3_dart_0: iommu@41af00000 {
+		compatible = "apple,t8132-dart", "apple,t8110-dart";
+		reg = <0x4 0x1af00000 0x0 0x4000>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 1469 IRQ_TYPE_LEVEL_HIGH>;
+		power-domains = <&ps_atc3_usb>;
+		#iommu-cells = <1>;
+		status = "okay";
+	};
+
+	dwc3_3_dart_1: iommu@41af80000 {
+		compatible = "apple,t8132-dart", "apple,t8110-dart";
+		reg = <0x4 0x1af80000 0x0 0x4000>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 1469 IRQ_TYPE_LEVEL_HIGH>;
+		power-domains = <&ps_atc3_usb>;
+		#iommu-cells = <1>;
+		status = "okay";
+	};
+
+	atcphy3: phy@41b000000 {
+		compatible = "apple,t8132-atcphy", "apple,t8122-atcphy";
+		reg = <0x4 0x1b000000 0x0 0x4c000>,
+		      <0x4 0x1b050000 0x0 0x8000>,
+		      <0x4 0x18000000 0x0 0x8000>,
+		      <0x4 0x1aa90000 0x0 0x4000>,
+		      <0x4 0x1aa84000 0x0 0x4000>;
+		reg-names = "core", "lpdptx", "axi2af", "usb2phy",
+		            "pipehandler";
+		#phy-cells = <1>;
+		#reset-cells = <0>;
+		orientation-switch;
+		mode-switch;
+		power-domains = <&ps_atc3_usb>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				atcphy3_typec_lanes: endpoint {
+					remote-endpoint = <&typec3_connector_ss>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				atcphy3_usb3: endpoint {
+					remote-endpoint = <&dwc3_3_ss>;
+				};
+			};
+		};
+	};
+
+	atcphy3_xbar: mux@41b04c000 {
+		compatible = "apple,t8132-display-crossbar",
+		             "apple,t8112-display-crossbar";
+		reg = <0x4 0x1b04c000 0x0 0x4000>;
+		#mux-control-cells = <1>;
+		power-domains = <&ps_atc3_usb>;
+	};
+};
+
+/*
+ * GL3590 hub behind atc2: release it from reset and enable its SPI NOR so it
+ * boots its own firmware. Pins from this mini's ioreg (usb3hub-fw node:
+ * function-usb3hub_flash_oe = gpio 101, function-usb3hub_rst = gpio 198,
+ * both active-high), same values and polarity as GravityLinux
+ * t8132-j773g.dts. fwload_done (102) and flash_wp (193) are left alone.
+ */
+&pinctrl_ap {
+	usb3hub-flash-oe-hog {
+		gpio-hog;
+		gpios = <101 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "usb3hub-flash-oe";
+	};
+
+	usb3hub-reset-hog {
+		gpio-hog;
+		gpios = <198 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "usb3hub-reset";
+	};
+};
+#endif /* J773G_LAYER_USB_ATC23 */

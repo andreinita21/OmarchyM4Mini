@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MIT
+# Glue between Omarchy's Apple Silicon platform and the M4 Mac mini installed
+# through the Gravity Linux stub (docs/j773g-phase3-plan.md §3):
+#  - chosen.asahi,efi-system-partition derived from the Gravity stage-1 property;
+#  - stage 2 limited to the J773g device tree;
+#  - a kernel-name shim for omarchy-mac-boot until its provides check lands;
+#  - the 3.5 mm jack's UCM profile and WirePlumber default-node hook (card
+#    J773gHeadphones from linux-gravity-m4 pkgrel 7), ported from
+#    the J713 omarchy-m4-headphones policy.
+pkgname=omarchy-j773g
+pkgver=20261017
+pkgrel=1
+pkgdesc='M4 Mac mini (J773g) glue for Omarchy on the Gravity kernel/m1n1/U-Boot packages'
+arch=('any')
+url='https://github.com/andreinita21/OmarchyM4Mini'
+license=('MIT')
+depends=('bash' 'pacman' 'linux-gravity-m4' 'm1n1-gravity' 'uboot-gravity' 'omarchy-mac-boot')
+install=omarchy-j773g.install
+source=(omarchy-j773g-esp-property omarchy-j773g-esp-property.service omarchy-mac-kernel update-m1n1.j773g
+        J773gHeadphones.conf J773gHeadphones-HiFi.conf j773g-headphones.lua 83-j773g-headphones.conf)
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+  install -Dm755 omarchy-j773g-esp-property "$pkgdir/usr/bin/omarchy-j773g-esp-property"
+  install -Dm644 omarchy-j773g-esp-property.service "$pkgdir/usr/lib/systemd/system/omarchy-j773g-esp-property.service"
+  install -Dm755 omarchy-mac-kernel "$pkgdir/usr/local/bin/omarchy-mac-kernel"
+  install -Dm644 update-m1n1.j773g "$pkgdir/usr/lib/omarchy-j773g/update-m1n1.j773g"
+  install -Dm644 J773gHeadphones.conf "$pkgdir/usr/share/alsa/ucm2/conf.d/J773gHeadphones/J773gHeadphones.conf"
+  install -Dm644 J773gHeadphones-HiFi.conf "$pkgdir/usr/share/alsa/ucm2/conf.d/J773gHeadphones/HiFi.conf"
+  install -Dm644 j773g-headphones.lua "$pkgdir/usr/share/wireplumber/scripts/default-nodes/j773g-headphones.lua"
+  install -Dm644 83-j773g-headphones.conf "$pkgdir/usr/share/wireplumber/wireplumber.conf.d/83-j773g-headphones.conf"
+  install -Dm644 /dev/stdin "$pkgdir/usr/lib/systemd/system-preset/79-omarchy-j773g.preset" <<'P'
+enable omarchy-j773g-esp-property.service
+P
+}

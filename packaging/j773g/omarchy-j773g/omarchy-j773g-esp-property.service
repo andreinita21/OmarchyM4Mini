@@ -1,0 +1,13 @@
+[Unit]
+Description=Expose the ESP to Omarchy's Apple Silicon hooks on the M4 Mac mini
+ConditionPathExists=/proc/device-tree/chosen/gravity,efi-system-partition
+ConditionPathExists=!/proc/device-tree/chosen/asahi,efi-system-partition
+After=local-fs.target
+RequiresMountsFor=/boot/efi
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/omarchy-j773g-esp-property
+
+[Install]
+WantedBy=multi-user.target

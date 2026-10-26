@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * J773g 3.5 mm jack: CS42L84 on i2c1 0x4b, AUDIO_MCA2_M, and the card node
+ * for the cluster-2 CPU DAI driver (port of audio/j713/headphones). Values
+ * from private/iodevicetree-j773g.txt: codec i2c1@4B (reset nub-gpio 17
+ * active high, irq gpio0 98), ADMAC base-ns TX 4 / RX 5, PMGR AUDIO_MCA2_M
+ * psidx 0x1f -> pmgr_audio + 0xf8.
+ */
+
+&pmgr_audio {
+	ps_audio_mca2_m: power-controller@f8 {
+		compatible = "apple,t8132-pmgr-pwrstate", "apple,t8103-pmgr-pwrstate";
+		reg = <0xf8 4>;
+		#power-domain-cells = <0>;
+		#reset-cells = <0>;
+		label = "audio_mca2_m";
+		power-domains = <&ps_audio_p>;
+	};
+};
+
+&i2c1 {
+	status = "okay";
+
+	jack_codec: codec@4b {
+		compatible = "cirrus,cs42l84";
+		reg = <0x4b>;
+		reset-gpios = <&pinctrl_nub 17 GPIO_ACTIVE_HIGH>;
+		interrupts-extended = <&pinctrl_ap 98 IRQ_TYPE_LEVEL_LOW>;
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "Jack";
+	};
+};
+
+/ {
+	headphones {
+		compatible = "omarchy,j773g-headphones";
+		power-domains = <&ps_audio_p>, <&ps_audio_mca0_m>, <&ps_audio_mca2_m>;
+		dmas = <&admac 4>, <&admac 5>;
+		dma-names = "tx", "rx";
+		omarchy,codec = <&jack_codec>;
+		#sound-dai-cells = <0>;
+	};
+};

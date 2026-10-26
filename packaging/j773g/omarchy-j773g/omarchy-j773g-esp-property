@@ -1,0 +1,33 @@
+#!/bin/bash
+# SPDX-License-Identifier: MIT
+# Omarchy's Apple Silicon hooks (omarchy-vendorfw, asahi-scripts' mount_sys_esp)
+# read /chosen/asahi,efi-system-partition. The Gravity installer's stage 1
+# passes the same UUID as chosen.gravity,efi-system-partition. update-m1n1
+# appends every "chosen.*=*" line of /etc/m1n1.conf to stage 2, so write the
+# Asahi spelling there once and rebuild boot.bin. Idempotent; a no-op when the
+# Asahi property is already present or the Gravity one is missing.
+set -euo pipefail
+chosen=${OMARCHY_J773G_CHOSEN:-/proc/device-tree/chosen}
+conf=${OMARCHY_J773G_M1N1_CONF:-/etc/m1n1.conf}
+
+[[ -e $chosen/asahi,efi-system-partition ]] && exit 0
+[[ -e $chosen/gravity,efi-system-partition ]] || exit 0
+uuid=$(tr -d '\0' <"$chosen/gravity,efi-system-partition")
+[[ $uuid =~ ^[0-9a-fA-F-]{36}$ ]] || { echo "omarchy-j773g: unexpected ESP UUID '$uuid'" >&2; exit 1; }
+uuid=${uuid,,}
+
+line="chosen.asahi,efi-system-partition=$uuid"
+if [[ -f $conf ]] && grep -Fxq "$line" "$conf"; then
+  exit 0
+fi
+if [[ -f $conf ]]; then
+  grep -v '^chosen.asahi,efi-system-partition=' "$conf" >"$conf.new" || :
+else
+  : >"$conf.new"
+fi
+printf '%s\n' "$line" >>"$conf.new"
+mv -f "$conf.new" "$conf"
+echo "omarchy-j773g: wrote $line to $conf"
+if [[ ${OMARCHY_J773G_NO_UPDATE_M1N1:-} != 1 ]] && command -v update-m1n1 >/dev/null; then
+  update-m1n1
+fi

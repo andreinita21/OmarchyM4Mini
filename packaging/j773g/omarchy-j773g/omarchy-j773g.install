@@ -1,0 +1,13 @@
+# /etc/default/update-m1n1 belongs to omarchy-mac-boot (backup=), so the DTB
+# selection is appended as a sourced line rather than owned as a file.
+_hook() {
+  local f=/etc/default/update-m1n1 line='. /usr/lib/omarchy-j773g/update-m1n1.j773g'
+  if [ -f "$f" ] && ! grep -Fxq "$line" "$f"; then
+    printf '\n# omarchy-j773g: J773g-only device tree in stage 2\n%s\n' "$line" >>"$f"
+  fi
+}
+post_install() { _hook; }
+post_upgrade() { _hook; }
+post_remove() {
+  sed -i '/^# omarchy-j773g: J773g-only device tree in stage 2$/d; \#^\. /usr/lib/omarchy-j773g/update-m1n1.j773g$#d' /etc/default/update-m1n1 2>/dev/null || :
+}

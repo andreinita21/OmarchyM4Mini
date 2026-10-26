@@ -1,0 +1,103 @@
+diff --git a/proxyclient/m1n1/hv/__init__.py b/proxyclient/m1n1/hv/__init__.py
+index 5f43dd86..af14bf3e 100644
+--- a/proxyclient/m1n1/hv/__init__.py
++++ b/proxyclient/m1n1/hv/__init__.py
+@@ -17,7 +17,7 @@ from .gdbserver import *
+ from .types import *
+ from .virtutils import *
+ from .virtio import *
+-from .sprr import patch_text_sprr_emu
++from .sprr import patch_text_sprr_emu, patch_text_sptm_tlbi
+ 
+ __all__ = ["HV"]
+ 
+@@ -1951,8 +1951,14 @@ class HV(Reloadable):
+         }
+         xnu_entry = xnu_macho.entry - xnu_macho.vmin
+ 
++        def sptm_load_hook(data, segname, size, fileoff, dest):
++            data = load_hook(data, segname, size, fileoff, dest)
++            if self.sptm_mode == SPTM_MODE.SPTM_EMULATION and segname in ("__TEXT_EXEC", "__TEXT_BOOT_EXEC"):
++                data = patch_text_sptm_tlbi(data)
++            return data
++
+         sptm_macho = MachO(open(sptm_path, "rb"))
+-        sptm_image, sptm_segments = sptm_macho.prepare_image(load_hook)
++        sptm_image, sptm_segments = sptm_macho.prepare_image(sptm_load_hook)
+         sptm_map = {
+             "ro": sptm_image[:sptm_segments["__TEXT_EXEC"][0]],
+             "rx": sptm_image[sptm_segments["__TEXT_EXEC"][0]:sptm_segments["__TEXT_EXEC"][1]],
+diff --git a/proxyclient/m1n1/hv/sprr.py b/proxyclient/m1n1/hv/sprr.py
+index f6e215e9..de14f29a 100644
+--- a/proxyclient/m1n1/hv/sprr.py
++++ b/proxyclient/m1n1/hv/sprr.py
+@@ -306,6 +306,18 @@ for src, dst in REMAP.items():
+         _SYSREG[sysreg_encode(src, rd)] = _SYSREG.get(opcode, (opcode, 0))
+ 
+ 
++# M4 SPTM's guarded-level TLB maintenance: 0x00201401 (invalidate all) and
++# 0x002013xx (by address/ASID, Rt in bits 0-4). Under emulation SPTM runs at
++# EL1, so replace each with TLBI VMALLE1IS (over-invalidation is safe).
++TLBI_VMALLE1IS = 0xd508831f
++
++def patch_text_sptm_tlbi(data):
++    a = array.array("I", data)
++    for i, w in enumerate(a):
++        if w == 0x00201401 or w & 0xffffff00 == 0x00201300:
++            a[i] = TLBI_VMALLE1IS
++    return a.tobytes()
++
+ def patch_text_sprr_emu(data):
+     a = array.array("I", data)
+ 
+diff --git a/proxyclient/m1n1/proxyutils.py b/proxyclient/m1n1/proxyutils.py
+index 07f199a9..da1fef60 100644
+--- a/proxyclient/m1n1/proxyutils.py
++++ b/proxyclient/m1n1/proxyutils.py
+@@ -301,6 +301,10 @@ class ProxyUtils(Reloadable):
+     def print_l2c_regs(self):
+         print()
+         print("  == L2C Registers ==")
++        if self.adt["/chosen"].chip_id == 0x8132:
++            # T8132 (M4): reading L2C_ERR_STS_EL1 from the proxy resets the mini
++            print("  (skipped on T8132)")
++            return
+         l2c_err_sts = self.mrs(L2C_ERR_STS_EL1)
+ 
+         print(f"  L2C_ERR_STS: {l2c_err_sts:#x}")
+diff --git a/proxyclient/tools/run_guest.py b/proxyclient/tools/run_guest.py
+index 1376924e..8754a15d 100755
+--- a/proxyclient/tools/run_guest.py
++++ b/proxyclient/tools/run_guest.py
+@@ -3,7 +3,7 @@
+ import sys, pathlib, traceback
+ sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
+ 
+-import argparse, pathlib
++import argparse, os, pathlib
+ from io import BytesIO
+ 
+ def volumespec(s):
+@@ -65,7 +65,9 @@ def sptm_mode_arg(val):
+ args.sptm_mode = sptm_mode_arg(args.sptm_mode)
+ 
+ if args.sptm_mode == SPTM_MODE.SPTM_EMULATION:
+-    m1n1_heap_mb = 1024
++    # SPTM requires (boot-args phys_base & ~0x1fffffff) == DRAM base, so the
++    # guest must start in the first 512 MiB of RAM (J773g: 256 MiB fits).
++    m1n1_heap_mb = int(os.environ.get("M1N1_HV_HEAP_MB", "1024"))
+ else:
+     m1n1_heap_mb = 128
+ u = ProxyUtils(p, heap_size = 128 * 1024 * 1024,
+@@ -144,7 +146,10 @@ elif args.sptm:
+ else:
+     hv.load_macho(payload, symfile=symfile)
+ 
+-PMU(u).reset_panic_counter()
++if not os.environ.get("M1N1_HV_NO_PMU_RESET"):
++    # T8132: this SPMI access leaves the controller in a state that makes
++    # macOS's nub-spmi0 driver fail (parity errors, "Queues not empty").
++    PMU(u).reset_panic_counter()
+ 
+ for i in args.script:
+     try:

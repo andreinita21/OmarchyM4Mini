@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT
+# Extra options for the GPU kernel (build/j773g/Image-gpu.gz, rung g8-gpu),
+# merged after kernel.fragment. Needs Debian's rustc 1.85 / bindgen 0.71
+# (the kernel minimums) from the build image.
+CONFIG_RUST=y
+CONFIG_DRM_ASAHI_M4=y
+CONFIG_DRM_ASAHI=n
