@@ -1,0 +1,46 @@
+--- a/src/egl/drivers/dri2/platform_wayland.c
++++ b/src/egl/drivers/dri2/platform_wayland.c
+@@ -2163,6 +2163,34 @@
+       mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+ 
+    close(fd);
++}
++
++/* A display-only KMS device (the M4 Mac mini's apple-drm) has no render
++ * node: the compositor renders through it with kmsro and advertises it as
++ * the main device. Use the system's render node when there is exactly one,
++ * as the compositor's renderer does underneath; with several, keep failing.
++ */
++static char *
++sole_render_node(void)
++{
++   drmDevicePtr devices[16];
++   char *node = NULL;
++   int count = drmGetDevices2(0, devices, ARRAY_SIZE(devices));
++   int found = 0;
++
++   for (int i = 0; i < count; i++) {
++      if (devices[i]->available_nodes & (1 << DRM_NODE_RENDER)) {
++         if (!found++)
++            node = strdup(devices[i]->nodes[DRM_NODE_RENDER]);
++      }
++   }
++   if (count > 0)
++      drmFreeDevices(devices, count);
++   if (found != 1) {
++      free(node);
++      return NULL;
++   }
++   return node;
+ }
+ 
+ static void
+@@ -2178,6 +2206,8 @@
+    /* Given the device, look for a render node and try to open it. */
+    memcpy(&dev, device->data, sizeof(dev));
+    node = loader_get_render_node(dev);
++   if (!node)
++      node = sole_render_node();
+    if (!node)
+       return;
+    fd = loader_open_device(node);

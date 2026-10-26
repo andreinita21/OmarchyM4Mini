@@ -1,0 +1,28 @@
+# Unified patch context has a marker before the original indentation.
+*.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches-kernel/j713-input/dockchannel-start-retry.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches-kernel/brcmfmac-bcm4388-rev6-c2-v116.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches/installer/root-identity.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches/installer/linux-partition-guid.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches/omarchy/offline-node-arm64.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches-m1n1/dockchannel-tx-bound.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches-m1n1/stage1-ans-no-reset.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+packaging/j773g/m1n1-gravity/ctrr-d-reserve.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+packaging/j773g/aquamarine-j773g/0001-drm-re-read-possible-CRTCs-when-rescanning-connectors.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+packaging/j773g/aquamarine-j773g/0002-drm-fix-crash-on-null-connector-in-flush.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+packaging/j773g/aquamarine-j773g/0003-drm-guard-backend-in-log.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+packaging/j773g/aquamarine-j773g/0004-drm-reconnect-an-output-whose-connector-gained-modes.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+packaging/j773g/aquamarine-j773g/0005-AQ_NO_RENDERD_FALLBACK.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+packaging/j773g/mesa-gravity-m4/wayland-sole-render-node.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+
+# Exact imported source is hash-pinned by audio/j713/imported-source.sha256.
+# Preserve its formatting: Cargo fingerprints change even for whitespace.
+audio/j713/speakersafetyd/src/helpers.rs whitespace=-blank-at-eol
+audio/j713/speakersafetyd/vendor/alsa/src/card.rs whitespace=-blank-at-eol
+audio/j713/speakersafetyd/vendor/alsa/src/poll.rs whitespace=-blank-at-eol
+audio/j713/speakersafetyd/vendor/alsa/README.md whitespace=-blank-at-eol,-blank-at-eof
+packaging/j773g/linux-gravity-m4/j773g-headphones.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches-kernel/j773g-usbc-dp/0001-tipd-hpd.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches-kernel/j773g-usbc-dp/0002-tipd-dp-hpd-oob-hotplug.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches-kernel/j773g-usbc-dp/0003-apple-dcp-usbc-link.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+patches-kernel/j773g-usbc-dp/0010-atc-t8122-dp-experimental.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab

@@ -1,0 +1,64 @@
+--- a/drivers/phy/apple/atc.c
++++ b/drivers/phy/apple/atc.c
+@@ -43,6 +43,15 @@
+ #include <linux/usb/typec_dp.h>
+ #include <linux/usb/typec_mux.h>
+ #include <linux/usb/typec_tbt.h>
++
++/*
++ * J773g experiment: run the T8103-generation DisplayPort aux power-up and the
++ * lane-config tail on T8122/T8132 too (the same ATC block with moved lane
++ * mode/crossbar offsets). Off by default; nothing changes unless set.
++ */
++static bool t8122_dp_experimental;
++module_param(t8122_dp_experimental, bool, 0644);
++MODULE_PARM_DESC(t8122_dp_experimental, "Run the DP aux/lane sequence on T8122/T8132 (experimental)");
+ 
+ #define AUSPLL_FSM_CTRL 0x1014
+ 
+@@ -1316,8 +1325,11 @@
+ 		core_clear32(atcphy, atcphy->hw->aciophy_crossbar, ACIOPHY_CROSSBAR_DP_BOTH_PMA);
+ 
+ 	/* unclear if we need the remainder for t8122 */
+-        if (atcphy->hw->gen == ATCPHY_GENERATION_T8122)
++	if (atcphy->hw->gen == ATCPHY_GENERATION_T8122 && !t8122_dp_experimental)
+ 		return;
++	if (atcphy->hw->gen == ATCPHY_GENERATION_T8122)
++		dev_info(atcphy->dev, "j773g-dp: lane tail, dp_lane %d/%d\n",
++			 mode_cfg->dp_lane[0], mode_cfg->dp_lane[1]);
+ 
+ 	if (mode_cfg->dp_lane[0]) {
+ 		core_set32(atcphy, LN0_AUSPMA_RX_TOP + LN_AUSPMA_RX_TOP_PMAFSM,
+@@ -1347,8 +1359,13 @@
+ static void atcphy_enable_dp_aux(struct apple_atcphy *atcphy)
+ {
+ 	/* FIXME */
+-	if (atcphy->hw->gen == ATCPHY_GENERATION_T8122)
++	if (atcphy->hw->gen == ATCPHY_GENERATION_T8122 && !t8122_dp_experimental) {
++		dev_info(atcphy->dev, "j773g-dp: aux enable skipped (T8122)\n");
+ 		return;
++	}
++	if (atcphy->hw->gen == ATCPHY_GENERATION_T8122)
++		dev_info(atcphy->dev, "j773g-dp: aux enable (experimental), aux_ctrl %08x\n",
++			 readl(atcphy->regs.lpdptx + LPDPTX_AUX_CONTROL));
+ 
+ 	core_set32(atcphy, ACIOPHY_LANE_DP_CFG_BLK_TX_DP_CTRL0, DPTXPHY_PMA_LANE_RESET_N);
+ 	core_set32(atcphy, ACIOPHY_LANE_DP_CFG_BLK_TX_DP_CTRL0, DPTXPHY_PMA_LANE_RESET_N_OV);
+@@ -1403,7 +1420,7 @@
+ static void atcphy_disable_dp_aux(struct apple_atcphy *atcphy)
+ {
+ 	/* FIXME */
+-	if (atcphy->hw->gen != ATCPHY_GENERATION_T8122) {
++	if (atcphy->hw->gen != ATCPHY_GENERATION_T8122 || t8122_dp_experimental) {
+ 		set32(atcphy->regs.lpdptx + LPDPTX_AUX_CONTROL, LPDPTX_AUX_PWN_DOWN);
+ 		set32(atcphy->regs.lpdptx + LPDPTX_AUX_CFG_BLK_AUX_CTRL, LPDPTX_BLK_AUX_CTRL_PWRDN);
+ 		set32(atcphy->regs.lpdptx + LPDPTX_AUX_CONTROL, LPDPTX_AUX_CLAMP_EN);
+@@ -1664,6 +1681,8 @@
+ 	mode_cfg = atcphy_get_mode_config(atcphy, atcphy->mode);
+ 	cfg = &dp_lr_config[lr];
+ 
++	dev_info(atcphy->dev, "j773g-dp: link rate %d requested (current %d, mode %d)\n",
++		 lr, atcphy->dp_link_rate, atcphy->mode);
+ 	if (atcphy->dp_link_rate == lr)
+ 		return 0;
+ 

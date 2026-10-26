@@ -1,0 +1,41 @@
+# Maintainer: KB2UKA
+# Contributor: Luthfi Hizb
+# Built and signed by .github/workflows/packages.yml; see docs/package-channel.md.
+# m4-headphones.py, the UCM and WirePlumber files, MIT.txt and GPL-2.0-only.txt are
+# staged from tools/, audio/j713/headphones/policy/ and LICENSES/ by
+# tools/build-m4-packages.py. The module source is audio/j713/headphones/kernel/.
+pkgname=omarchy-m4-headphones
+pkgver=1
+pkgrel=2
+pkgdesc='J713 headphone jack playback and headset microphone: the J713Headphones card beside the protected speakers'
+arch=('aarch64')
+url='https://github.com/Kb2uka/Omarchy-M4-Native'
+license=('GPL-2.0-only' 'MIT')
+depends=('python' 'kmod')
+install=omarchy-m4-headphones.install
+options=('!strip' '!debug')
+source=('m4-headphones.py' '30-m4-headphones.conf' 'J713Headphones.conf' 'HiFi.conf'
+        '83-j713-headphones.conf' 'j713-headphones.lua' 'MIT.txt' 'GPL-2.0-only.txt'
+        "j713_hp_dt.ko::${url}/releases/download/package-inputs/j713_hp_dt-3f501c61.ko"
+        "snd-soc-j713-headphones.ko::${url}/releases/download/package-inputs/snd-soc-j713-headphones-2e743937.ko")
+sha256sums=('844ea75400cbec77a61876e359e9effca316f8efc57f634fdd531a0970832ec0'
+            '2db802990b7514f3cd1f54168ce3c8adef9ec2dd061743d341490ee3985a9de2'
+            '440e7740fde500e145cb6349ac982300a26ce20f2c0300899c18c94cd6382077'
+            'fc5b6917b65b85c60ec85c72bd61b126f42dde2828570e0d60d81f87d0b57b37'
+            '864ca348be69d149325c3b9220da78e86663711682c0f905beb1f4fa7358a381'
+            '36879853bfc52709312bbddef95575bebf9953269c6db5a6a850e1ea4de1969d'
+            'b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5'
+            'aaf135472f81c5b4a0dca9367e5bb5e9750032b5bebe5442b36e4c0a47430df3'
+            '3f501c6193aeddc62031395e899909bf352851278f829458998ca1c4dbbe6149'
+            '2e743937b4bd8315ec6dba6bef4bbfbf197d4bf6f8688761954579192df48244')
+
+package() {
+  install -Dm755 m4-headphones.py "$pkgdir/usr/bin/m4-headphones"
+  install -Dm644 -t "$pkgdir/usr/lib/omarchy-m4/j713-headphones" j713_hp_dt.ko snd-soc-j713-headphones.ko
+  install -Dm644 30-m4-headphones.conf \
+    "$pkgdir/usr/lib/systemd/system/m4-j713-audio-register.service.d/30-m4-headphones.conf"
+  install -Dm644 -t "$pkgdir/usr/share/alsa/ucm2/conf.d/J713Headphones" J713Headphones.conf HiFi.conf
+  install -Dm644 83-j713-headphones.conf "$pkgdir/usr/share/wireplumber/wireplumber.conf.d/83-j713-headphones.conf"
+  install -Dm644 j713-headphones.lua "$pkgdir/usr/share/wireplumber/scripts/default-nodes/j713-headphones.lua"
+  install -Dm644 -t "$pkgdir/usr/share/licenses/$pkgname" MIT.txt GPL-2.0-only.txt
+}

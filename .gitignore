@@ -1,0 +1,18 @@
+m1n1/
+linux-asahi/
+build/
+.artifacts/
+.claude/worktrees/
+
+# Keep nested workflow instructions private; publish reviewed root guidance.
+AGENTS.md
+CLAUDE.md
+!/AGENTS.md
+!/CLAUDE.md
+# Publish only the reviewed derived research files, regardless of capture naming.
+recon/*
+!recon/README.md
+!recon/pmgr-j713-generated-from-live-adt.dtsi
+
+# Local hardware captures (ADT/ioreg dumps, firmware, logs) never enter the tree.
+private/

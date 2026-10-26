@@ -1,0 +1,97 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * Main PMU (Abbey) NVMEM, SMC reboot/poweroff and SMC RTC for the M4 Mac
+ * mini (J773g). Missing from GravityLinux gravity-m4 4fc326f6c2: its SMC node
+ * has no reboot or rtc child, so poweroff has no handler and the RTC has no
+ * offset cell.
+ *
+ * Values from this mini's macOS IORegistry (private/iodevicetree-j773g.txt,
+ * 2026-10-13): nub-spmi0 IODeviceMemory 0x3_88714000; pmu-main@E compatible
+ * "pmu,spmi","pmu,abbey", info-leg_scrpad 0xf800, info-pm_setting 0x2001,
+ * info-clock_offset 0x2100 len 6, info-fault_shadow 0x867b len 0x10,
+ * info-scrpad_socd 0x8b00 len 0x1800. All identical to the M4 Air (J713),
+ * where the shutdown-state cells were proven on hardware
+ * (docs/j713-poweroff.md): without
+ * shutdown_flag, SMC "off1" restarts the machine instead of powering off.
+ *
+ * The state cells sit at leg_scrpad + 1 / + 2 / + 0xf, as on every Apple
+ * family in tree (T6030 Chapel has the same 0xf800 / 0x2001 / 0x2100 triple).
+ *
+ * Built into the linux-gravity-m4 DTB (pkgrel 5) and ladder group PMU.
+ * Verified on the J773g 2026-10-17 (installed Omarchy, stage 2 with this DTB):
+ * spmi_nvmem0 lists the cells, macsmc-reboot and macsmc-rtc bind, rtc0 keeps
+ * time, and `systemctl poweroff` turns the mini fully off (power LED off).
+ */
+
+#include <dt-bindings/spmi/spmi.h>
+
+&soc {
+	nub_spmi: spmi@388714000 {
+		compatible = "apple,t8132-spmi", "apple,t8103-spmi";
+		reg = <0x3 0x88714000 0x0 0x100>;
+		#address-cells = <2>;
+		#size-cells = <0>;
+
+		pmic1: pmic@e {
+			compatible = "apple,abbey-pmic", "apple,spmi-nvmem";
+			reg = <0xe SPMI_USID>;
+
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				pm_setting: pm-setting@2001 {
+					reg = <0x2001 0x1>;
+				};
+
+				rtc_offset: rtc-offset@2100 {
+					reg = <0x2100 0x6>;
+				};
+
+				fault_shadow: fault-shadow@867b {
+					reg = <0x867b 0x10>;
+				};
+
+				socd: socd@8b00 {
+					reg = <0x8b00 0x1800>;
+				};
+
+				boot_stage: boot-stage@f801 {
+					reg = <0xf801 0x1>;
+				};
+
+				boot_error_count: boot-error-count@f802,0 {
+					reg = <0xf802 0x1>;
+					bits = <0 4>;
+				};
+
+				panic_count: panic-count@f802,4 {
+					reg = <0xf802 0x1>;
+					bits = <4 4>;
+				};
+
+				shutdown_flag: shutdown-flag@f80f,3 {
+					reg = <0xf80f 0x1>;
+					bits = <3 1>;
+				};
+			};
+		};
+	};
+};
+
+&smc {
+	smc_reboot: reboot {
+		compatible = "apple,smc-reboot";
+		nvmem-cells = <&shutdown_flag>, <&boot_stage>,
+			<&boot_error_count>, <&panic_count>;
+		nvmem-cell-names = "shutdown_flag", "boot_stage",
+			"boot_error_count", "panic_count";
+	};
+
+	rtc {
+		compatible = "apple,smc-rtc";
+		nvmem-cells = <&rtc_offset>;
+		nvmem-cell-names = "rtc_offset";
+	};
+};

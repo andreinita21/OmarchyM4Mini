@@ -1,0 +1,249 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * Boot-ladder gates for the M4 Mac mini (J773g), applied on top of
+ * GravityLinux's t8132-j773g.dts (gravity-m4 branch), which has booted
+ * Fedora on this machine. Include it AFTER the board file:
+ *
+ *   #define J773G_LADDER_SMC        (etc., one per enabled group)
+ *   #include "t8132-j773g.dts"
+ *   #include "t8132-j773g-ladder.dtsi"
+ *
+ * Every group not defined is forced to status = "disabled", so a rung
+ * enables exactly the subsystems it names. tools/j773g/inner-build.sh
+ * generates the rung wrappers.
+ *
+ * Audio is disabled in EVERY rung, unconditionally: the mini's speaker
+ * path (SN012776 amp on i2c3, MCA, ADMAC) needs a reviewed J773g safety
+ * profile first, and J713 speaker data must never be used here.
+ */
+
+/* ---- Audio: always off (speaker safety) ---- */
+&{/speaker-audio} {
+	status = "disabled";
+};
+
+&i2c3 {
+	status = "disabled";
+};
+
+&mca {
+	status = "disabled";
+};
+
+&admac {
+	status = "disabled";
+};
+
+&dart_audio {
+	status = "disabled";
+};
+
+&dpaudio0 {
+	status = "disabled";
+};
+
+/* ---- SMC (gpio provider for PCIe pwren, hwmon, rtc, reboot) ---- */
+#ifndef J773G_LADDER_SMC
+&smc_mbox {
+	status = "disabled";
+};
+
+&smc {
+	status = "disabled";
+};
+
+&{/regulator-pcie0-port0} {
+	status = "disabled";
+};
+#endif
+
+/* ---- Storage: ANS mailbox, SART, NVMe (probe only; nothing mounts it) ---- */
+#ifndef J773G_LADDER_STORAGE
+&ans_mbox {
+	status = "disabled";
+};
+
+&sart {
+	status = "disabled";
+};
+
+&nvme {
+	status = "disabled";
+};
+#endif
+
+/* ---- USB: SPMI PD controllers, four DWC3 + DARTs + ATC PHYs ---- */
+#ifndef J773G_LADDER_USB
+&nub_spmi_a0 {
+	status = "disabled";
+};
+
+&nub_spmi_a1 {
+	status = "disabled";
+};
+
+&dwc3_0 {
+	status = "disabled";
+};
+
+&dwc3_0_dart_0 {
+	status = "disabled";
+};
+
+&dwc3_0_dart_1 {
+	status = "disabled";
+};
+
+&atcphy0 {
+	status = "disabled";
+};
+
+&dwc3_1 {
+	status = "disabled";
+};
+
+&dwc3_1_dart_0 {
+	status = "disabled";
+};
+
+&dwc3_1_dart_1 {
+	status = "disabled";
+};
+
+&atcphy1 {
+	status = "disabled";
+};
+
+&dwc3_2 {
+	status = "disabled";
+};
+
+&dwc3_2_dart_0 {
+	status = "disabled";
+};
+
+&dwc3_2_dart_1 {
+	status = "disabled";
+};
+
+&atcphy2 {
+	status = "disabled";
+};
+
+&dwc3_3 {
+	status = "disabled";
+};
+
+&dwc3_3_dart_0 {
+	status = "disabled";
+};
+
+&dwc3_3_dart_1 {
+	status = "disabled";
+};
+
+&atcphy3 {
+	status = "disabled";
+};
+#endif
+
+/* ---- PCIe: Wi-Fi/BT on port 0 (needs SMC for pwren), Ethernet on port 2 ---- */
+#if !defined(J773G_LADDER_PCIE) || !defined(J773G_LADDER_SMC)
+&pcie0 {
+	status = "disabled";
+};
+
+&pcie0_dart {
+	status = "disabled";
+};
+
+&pcie2_dart {
+	status = "disabled";
+};
+#endif
+
+/* ---- CPU frequency scaling ---- */
+#ifndef J773G_LADDER_CPUFREQ
+&cpufreq_e {
+	status = "disabled";
+};
+
+&cpufreq_p {
+	status = "disabled";
+};
+#endif
+
+/* ---- Native display: DCP/DCPEXT, DARTs, mailboxes, DPTX PHY, SIO ---- */
+#ifndef J773G_LADDER_DISPLAY
+&display {
+	status = "disabled";
+};
+
+&dcp {
+	status = "disabled";
+};
+
+&dcp_dart {
+	status = "disabled";
+};
+
+&dcp_mbox {
+	status = "disabled";
+};
+
+&disp0_dart {
+	status = "disabled";
+};
+
+&dispext0_dart {
+	status = "disabled";
+};
+
+&dcpext0_dart {
+	status = "disabled";
+};
+
+&dcpext0_mbox {
+	status = "disabled";
+};
+
+&dispext1_dart {
+	status = "disabled";
+};
+
+&dcpext1_dart {
+	status = "disabled";
+};
+
+&dcpext1_mbox {
+	status = "disabled";
+};
+
+&dptxphy {
+	status = "disabled";
+};
+
+&sio {
+	status = "disabled";
+};
+
+&sio_dart {
+	status = "disabled";
+};
+
+&sio_mbox {
+	status = "disabled";
+};
+#endif
+
+/* ---- GPU: m1n1 enables it when it has reserved the firmware state ---- */
+#ifndef J773G_LADDER_GPU
+&agx_mbox {
+	status = "disabled";
+};
+#endif
+
+/* ---- PMU NVMEM + SMC reboot/poweroff + RTC (not in Gravity's tree) ---- */
+#if defined(J773G_LADDER_PMU) && defined(J773G_LADDER_SMC)
+#include "t8132-j773g-pmu.dtsi"
+#endif

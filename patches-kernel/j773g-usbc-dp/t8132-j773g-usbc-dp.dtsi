@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * Apple Mac mini (M4, 2024), J773g: DisplayPort alt-mode plumbing for the
+ * back-right USB-C port (usb-pd@8 on nub_spmi_a0, connector typec3,
+ * ATC PHY atcphy3 @ 0x4_1b000000, sysfs typec/port2), driven by the spare
+ * display coprocessor dcpext0 (dcp@286e00000).
+ *
+ * Include at the end of t8132-j773g.dts (it references typec3, which that
+ * file defines). Needs the tipd HPD patches (0001, 0002) and the apple-drm
+ * USB-C link patch (0003).
+ *
+ * What this wires:
+ *   - dcpext0 gets the ATC PHY's DP phy ("dp-phy", the only name dcp.c asks
+ *     for), connector type "DP" and the DPTX remote port target
+ *     (apple,dptx-phy = ATC index 3, apple,dptx-die = 0).
+ *   - typec3 names dcpext0 as its display controller, so tipd sends HPD
+ *     to dcpext0's DRM connector (drm_connector_oob_hotplug_event()).
+ *
+ * Deliberately left out:
+ *   - status: dcpext0 is enabled by the loader (m1n1), as on every other
+ *     Apple dcpext node. Forcing "okay" here would make apple-drm's component
+ *     master wait for it even when the loader decided it cannot run, which
+ *     would keep HDMI (dcp) from binding too.
+ *   - mux-controls / mux-control-names / mux-index ("dp-xbar"): there is no
+ *     T8132 display crossbar node or driver (apple-display-crossbar.c knows
+ *     t8103/t8112/t6000/t6020 only). dcp.c only asks for the crossbar when
+ *     mux-index is present, so without it dcpext0 probes normally, and its
+ *     output is simply not routed to atcphy3: link training cannot succeed.
+ *   - A ports/endpoint graph to atcphy3: apple-drm adds every remote
+ *     endpoint parent of a DCP as a DRM component, except "apple,dpaudio" and
+ *     "apple,t8103-atcphy". The T8132 ATC PHY is neither and never registers
+ *     a component, so a graph link would block apple-drm (and HDMI) forever.
+ *
+ * Boot-order note: phys makes dcpext0's probe wait (-EPROBE_DEFER) for
+ * phy-apple-atc. With CONFIG_PHY_APPLE_ATC=m, apple-drm (built in) and with
+ * it the HDMI output bind only once that module has loaded and atcphy3 has
+ * probed. See README.md: build it in (CONFIG_PHY_APPLE_ATC=y).
+ */
+
+#include <dt-bindings/phy/phy.h>
+
+&soc {
+	/*
+	 * atc3-dpxbar from the macOS ADT (compatible "atc-dpxbar,t602x",
+	 * 0x4_1b04c000 + 0x4000): the t6020 crossbar register layout.
+	 */
+	atcphy3_xbar: mux@41b04c000 {
+		compatible = "apple,t8132-display-crossbar", "apple,t6020-display-crossbar";
+		reg = <0x4 0x1b04c000 0x0 0x4000>;
+		#mux-control-cells = <1>;
+		power-domains = <&ps_atc3_usb>;
+	};
+};
+
+&dcpext0 {
+	apple,connector-type = "DP";
+	phys = <&atcphy3 PHY_TYPE_DP>;
+	phy-names = "dp-phy";
+	apple,dptx-phy = <3>;
+	apple,dptx-die = <0>;
+	/* ADT display-crossbar0: dcp is input 0, dcpext0 input 1, dcpext1 input 2 */
+	mux-controls = <&atcphy3_xbar 0>;
+	mux-control-names = "dp-xbar";
+	mux-index = <1>;
+};
+
+&typec3 {
+	displayport = <&dcpext0>;
+};
+
+/*
+ * Asahi keeps the ATC "common" power domain of its DP alt-mode port always
+ * on (fairydust 6f72fa4b26b4) because the ATC PHY has no DP suspend/resume
+ * handling. Not needed for a first plug test without suspend; enable if
+ * DP alt-mode is tried across suspend.
+ *
+ * &ps_atc3_common {
+ *	apple,always-on;
+ * };
+ */

@@ -1,0 +1,32 @@
+From 2db9584de33231580db286e13edbfb2d7787b766 Mon Sep 17 00:00:00 2001
+From: Cody Ho <codyho@stanford.edu>
+Date: Tue, 15 Sep 2026 00:13:15 -0700
+Subject: [PATCH] apple: Find the ESP on T8132 NVMe
+
+The T8132 device tree uses the SoC-specific
+apple,t8132-nvme-ans2 compatible without the generic apple,nvme-ans2
+fallback. Match it when locating the ESP so Gravity EFI selection works
+on M4 systems.
+
+Signed-off-by: Cody Ho <codyho@stanford.edu>
+Assisted-By: OpenAI Codex (gpt-6-astra, gpt-5.6-sol)
+---
+ arch/arm/mach-apple/board.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/mach-apple/board.c b/arch/arm/mach-apple/board.c
+index 80d97b0d8d0..9d9619abc5b 100644
+--- a/arch/arm/mach-apple/board.c
++++ b/arch/arm/mach-apple/board.c
+@@ -1246,7 +1246,8 @@ static char *gravity_esp_devpart(void)
+ 
+ 		dev = dev_get_parent(nvme_blk->bdev);
+ 		if (!device_is_compatible(dev, "apple,nvme-ans2") &&
+-		    !device_is_compatible(dev, "apple,t8103-nvme-ans2"))
++		    !device_is_compatible(dev, "apple,t8103-nvme-ans2") &&
++		    !device_is_compatible(dev, "apple,t8132-nvme-ans2"))
+ 			continue;
+ 
+ 		for (p = 1; p <= MAX_SEARCH_PARTITIONS; p++) {
+-- 
+2.47.3

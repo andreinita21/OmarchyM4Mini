@@ -1,0 +1,176 @@
+From 9b06f6cddc90deef0bd5f35d57437549c4f25593 Mon Sep 17 00:00:00 2001
+From: Cody Ho <codyho@stanford.edu>
+Date: Mon, 14 Sep 2026 22:20:03 -0700
+Subject: [PATCH] arm: apple: Add Apple M4 (T8132) memory map
+
+Apple M4 uses an MMIO layout that is not covered by the existing M3 map. Add mappings for its SoC I/O, PCIe apertures, and PCIe controller registers, and select them for apple,t8132.
+
+Signed-off-by: Cody Ho <codyho@stanford.edu>
+Assisted-By: OpenAI Codex (gpt-6-astra, gpt-5.6-sol)
+---
+ arch/arm/mach-apple/board.c | 143 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 143 insertions(+)
+
+diff --git a/arch/arm/mach-apple/board.c b/arch/arm/mach-apple/board.c
+index 9e6f4658b30..80d97b0d8d0 100644
+--- a/arch/arm/mach-apple/board.c
++++ b/arch/arm/mach-apple/board.c
+@@ -752,6 +752,147 @@ static struct mm_region t8122_mem_map[] = {
+ 	}
+ };
+ 
++/* Apple M4 */
++
++static struct mm_region t8132_mem_map[] = {
++	{
++		/* I/O */
++		.virt = 0x200000000,
++		.phys = 0x200000000,
++		.size = 14UL * SZ_1G + SZ_512M,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
++			 PTE_BLOCK_NON_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE */
++		.virt = 0x800000000,
++		.phys = 0x800000000,
++		.size = 8UL * SZ_1G,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRE) |
++			 PTE_BLOCK_INNER_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE */
++		.virt = 0xa00000000,
++		.phys = 0xa00000000,
++		.size = 2UL * SZ_1G,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRE) |
++			 PTE_BLOCK_INNER_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE */
++		.virt = 0xa80000000,
++		.phys = 0xa80000000,
++		.size = SZ_1G,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRE) |
++			 PTE_BLOCK_INNER_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE */
++		.virt = 0xac0000000,
++		.phys = 0xac0000000,
++		.size = SZ_512M,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRE) |
++			 PTE_BLOCK_INNER_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE */
++		.virt = 0xb80000000,
++		.phys = 0xb80000000,
++		.size = SZ_1G,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRE) |
++			 PTE_BLOCK_INNER_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE */
++		.virt = 0xbc0000000,
++		.phys = 0xbc0000000,
++		.size = SZ_512M,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRE) |
++			 PTE_BLOCK_INNER_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE */
++		.virt = 0xc00000000,
++		.phys = 0xc00000000,
++		.size = 8UL * SZ_1G,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRE) |
++			 PTE_BLOCK_INNER_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE */
++		.virt = 0xe00000000,
++		.phys = 0xe00000000,
++		.size = 2UL * SZ_1G,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRE) |
++			 PTE_BLOCK_INNER_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE */
++		.virt = 0x1000000000,
++		.phys = 0x1000000000,
++		.size = 8UL * SZ_1G,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRE) |
++			 PTE_BLOCK_INNER_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE */
++		.virt = 0x1200000000,
++		.phys = 0x1200000000,
++		.size = 2UL * SZ_1G,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRE) |
++			 PTE_BLOCK_INNER_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE */
++		.virt = 0x1400000000,
++		.phys = 0x1400000000,
++		.size = 8UL * SZ_1G,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRE) |
++			 PTE_BLOCK_INNER_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE */
++		.virt = 0x1600000000,
++		.phys = 0x1600000000,
++		.size = 2UL * SZ_1G,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRE) |
++			 PTE_BLOCK_INNER_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE controller I/O */
++		.virt = 0x1c50000000,
++		.phys = 0x1c50000000,
++		.size = SZ_1G,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
++			 PTE_BLOCK_NON_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* PCIE controller I/O */
++		.virt = 0x1cb0000000,
++		.phys = 0x1cb0000000,
++		.size = SZ_256M,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
++			 PTE_BLOCK_NON_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* RAM */
++		.virt = 0x10000000000,
++		.phys = 0x10000000000,
++		.size = 8UL * SZ_1G,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
++			 PTE_BLOCK_INNER_SHARE
++	}, {
++		/* Framebuffer */
++		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL_NC) |
++			 PTE_BLOCK_INNER_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* List terminator */
++		0,
++	}
++};
++
+ /* Apple M3 Pro and Max */
+ 
+ static struct mm_region t6030_mem_map[] = {
+@@ -1019,6 +1160,8 @@ void build_mem_map(void)
+ 		mem_map = t6022_mem_map;
+ 	else if (of_machine_is_compatible("apple,t8122"))
+ 		mem_map = t8122_mem_map;
++	else if (of_machine_is_compatible("apple,t8132"))
++		mem_map = t8132_mem_map;
+ 	else if (of_machine_is_compatible("apple,t6030") ||
+ 		 of_machine_is_compatible("apple,t6031") ||
+ 		 of_machine_is_compatible("apple,t6034"))
+-- 
+2.47.3

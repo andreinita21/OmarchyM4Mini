@@ -1,0 +1,53 @@
+From 11da9618ef185aa380a75ee8bb157e264c4da8b2 Mon Sep 17 00:00:00 2001
+From: Cody Ho <codyho@stanford.edu>
+Date: Mon, 14 Sep 2026 22:04:47 -0700
+Subject: [PATCH] apple: Use Gravity EFI system partition property
+
+Signed-off-by: Cody Ho <codyho@stanford.edu>
+Assisted-By: OpenAI Codex (gpt-6-astra, gpt-5.6-sol)
+---
+ arch/arm/mach-apple/board.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-apple/board.c b/arch/arm/mach-apple/board.c
+index 5efd5f5a826..9e6f4658b30 100644
+--- a/arch/arm/mach-apple/board.c
++++ b/arch/arm/mach-apple/board.c
+@@ -1076,7 +1076,7 @@ u64 get_page_table_size(void)
+ 	return SZ_256K;
+ }
+ 
+-static char *asahi_esp_devpart(void)
++static char *gravity_esp_devpart(void)
+ {
+ 	struct disk_partition info;
+ 	struct blk_desc *nvme_blk;
+@@ -1091,7 +1091,7 @@ static char *asahi_esp_devpart(void)
+ 
+ 	node = ofnode_path("/chosen");
+ 	if (ofnode_valid(node)) {
+-		uuid = ofnode_get_property(node, "asahi,efi-system-partition",
++		uuid = ofnode_get_property(node, "gravity,efi-system-partition",
+ 					   &len);
+ 	}
+ 
+@@ -1142,7 +1142,7 @@ const char *env_fat_get_intf(void)
+ 
+ char *env_fat_get_dev_part(void)
+ {
+-	return asahi_esp_devpart();
++	return gravity_esp_devpart();
+ }
+ 
+ #define KERNEL_COMP_SIZE	SZ_128M
+@@ -1155,7 +1155,7 @@ int board_late_init(void)
+ 	phys_addr_t addr;
+ 
+ 	env_set("storage_interface", blk_get_uclass_name(UCLASS_NVME));
+-	env_set("fw_dev_part", asahi_esp_devpart());
++	env_set("fw_dev_part", gravity_esp_devpart());
+ 
+ 	/* somewhat based on the Linux Kernel boot requirements:
+ 	 * align by 2M and maximal FDT size 2M
+-- 
+2.47.3

@@ -1,0 +1,113 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * J773g layer: PCIe root complex — Wi-Fi/Bluetooth (port 0), Ethernet (port 2).
+ *
+ * SoC nodes pcie0 / pcie0_dart / port00..02 come from patch 0007
+ * (J713-proven for the root complex and port 0). The mini adds a populated
+ * port 2 with its own DART, exactly like the M1/M2 mini (t8112-j473.dts).
+ *
+ * VERIFIED-J713 / UNVERIFIED-J773g (identical in ioreg): root IRQs
+ *   1231/1240/1249, MSI base 1506 x 96, ECAM 0x1c_b0000000, bus-range 0-8,
+ *   dart-apcie0 0x4_90000000 IRQ 1232, WLAN SID 1, BT SID 2 (mapper reg),
+ *   port 0 CLKREQ gpio0 pin 160 func 2, PERST pin 163.
+ * UNVERIFIED (ioreg only, new on the mini):
+ *   pci-bridge2: apcie-port 2, CLKREQ gpio0 pin 162 func 2, PERST pin 165,
+ *     msi-vector-base 0x40 (= second 32-vector block).
+ *   dart-apcie2 0x4_92000000/0x20000 IRQ 1250, dart-id 0, sid <0x10 0x11
+ *     0x12>, children mapper-apcie2 (reg 1 -> the LAN device) and
+ *     mapper-apcie2-piodma@11.
+ *   lan-1gb: compatible pci14e4,1682 (Broadcom BCM57762 GbE, tg3 driver,
+ *     same part as the M1/M2 mini), MAC supplied by iBoot via
+ *     /chosen/mac-address-ethernet0 -> m1n1 fills local-mac-address.
+ *   wlan: pci14e4,4434, module-instance "sakhalin". The macOS compatible
+ *     says bcm4387, but 0x4434 is the BCM4388 ID in Asahi's brcmfmac and
+ *     the Gravity installer collects C-4388__s-C2/sakhalin firmware for
+ *     J773g: treat it as BCM4388 rev C2 (the brcmfmac 4388 patch is
+ *     therefore relevant).
+ *   bluetooth-pcie: pci14e4,5f72, compatible bluetooth,n88.
+ *   Port 0 power: pwren on SMC GPIO 19, from GravityLinux/linux
+ *     t8132-jxxx.dtsi (regulator "pwren-pcie0-port0", shared by all T8132
+ *     boards there). The mini's ioreg bridges show no pwren property, so
+ *     this is INHERITED. Ethernet (port 2) has no pwren on any Apple mini.
+ *   Ethernet bus number 2 and RID 0x200 match GravityLinux t8132-j773g.dts
+ *     (booted on an M4 mini); port 1 is not populated here.
+ *
+ * Firmware: Wi-Fi/BT need the Apple-extracted brcm firmware set for
+ * "sakhalin" (asahi-fwextract currently skips C-4388__s-C2; the Gravity
+ * installer handles it). Ethernet needs none.
+ */
+
+/ {
+	aliases {
+		bluetooth0 = &bluetooth0;
+		ethernet0 = &ethernet0;
+		wifi0 = &wifi0;
+	};
+};
+
+&pcie_pins {
+	pinmux = <APPLE_PINMUX(160, 2)>,
+	         <APPLE_PINMUX(162, 2)>;
+};
+
+&pcie0_dart {
+	status = "okay";
+};
+
+&soc {
+	pcie2_dart: iommu@492000000 {
+		compatible = "apple,t8132-dart", "apple,t8110-dart";
+		reg = <0x4 0x92000000 0x0 0x4000>;
+		#iommu-cells = <1>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 1250 IRQ_TYPE_LEVEL_HIGH>;
+		power-domains = <&ps_apcie_phy_sw>;
+		status = "okay";
+	};
+};
+
+&pcie0 {
+	iommu-map = <0x100 &pcie0_dart 1 1>,
+		    <0x101 &pcie0_dart 2 1>,
+		    <0x200 &pcie2_dart 1 1>;
+	iommu-map-mask = <0xffff>;
+	status = "okay";
+};
+
+/*
+ * Force bus numbers so the on-board devices can be declared and m1n1 can
+ * fill MAC / BD addresses by alias (J473 pattern).
+ */
+&port00 {
+	bus-range = <1 1>;
+	pwren-gpios = <&smc_gpio 19 GPIO_ACTIVE_HIGH>;
+
+	wifi0: wifi@0,0 {
+		compatible = "pci14e4,4434";
+		reg = <0x10000 0x0 0x0 0x0 0x0>;
+		/* To be filled by the loader */
+		local-mac-address = [00 10 18 00 00 10];
+		apple,antenna-sku = "XX";
+		brcm,board-type = "apple,sakhalin";
+	};
+
+	bluetooth0: bluetooth@0,1 {
+		compatible = "pci14e4,5f72";
+		reg = <0x10100 0x0 0x0 0x0 0x0>;
+		/* To be filled by the loader */
+		local-bd-address = [00 00 00 00 00 00];
+		brcm,board-type = "apple,sakhalin";
+	};
+};
+
+&port02 {
+	bus-range = <2 2>;
+	reset-gpios = <&pinctrl_ap 165 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	ethernet0: ethernet@0,0 {
+		reg = <0x20000 0x0 0x0 0x0 0x0>;
+		/* To be filled by the loader */
+		local-mac-address = [00 10 18 00 00 00];
+	};
+};

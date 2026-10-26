@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * J773g layer: Thunderbolt / PCIe-C (apciec) — RECORD ONLY, no nodes.
+ *
+ * Linux has no driver for Apple's Thunderbolt controller (acio / apciec);
+ * the T8132 gap analysis keeps the J713 pair as a "separate future unit".
+ * The mini has three instances. Nothing here is enabled; the addresses are
+ * kept so a later session does not have to re-derive them.
+ *
+ * UNVERIFIED (ioreg 2026-10-13, translated through arm-io ranges):
+ *   apciec0  ECAM 0x1c_50000000/0x10000000   dart-apciec0 0x4_04000000/0x20000
+ *            acio0 0x4_01f00000/0x100000     dart-acio0   0x4_01a80000/0x20000
+ *            acio-cpu0 0x4_01108000           atc0-dpxbar  0x4_0304c000
+ *   apciec1  ECAM 0x1c_60000000/0x10000000   dart-apciec1 0x4_0c000000/0x20000
+ *            acio1 0x4_09f00000/0x100000     dart-acio1   0x4_09a80000/0x20000
+ *            acio-cpu1 0x4_09108000           atc1-dpxbar  0x4_0b04c000
+ *   apciec3  ECAM 0x1c_80000000/0x10000000   dart-apciec3 0x4_1c000000/0x20000
+ *            acio3 0x4_19f00000/0x100000     dart-acio3   0x4_19a80000/0x20000
+ *            acio-cpu3 0x4_19108000           atc3-dpxbar  0x4_1b04c000
+ *   No apciec2 / acio2: ATC2 is the USB-only hub port.
+ *   Retimers: i2c2 atcrt0@18, atcrt1@19, atcrt3@1b (compatible "atcrt").
+ *   PMGR: ATCx_PCIE, ATCx_CIO, ATCx_CIO_PCIE, ATCx_CIO_USB are real on
+ *   this mini for x = 0,1,2,3.
+ *
+ * Out of scope for the first weekend (START_HERE.md section 2).
+ */
