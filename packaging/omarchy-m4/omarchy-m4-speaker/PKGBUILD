@@ -1,5 +1,5 @@
 # Maintainer: KB2UKA
-# Built and signed by .github/workflows/packages.yml; see docs/package-channel.md.
+# Part of the J713 package channel; see docs/package-channel.md.
 # m4-speaker-module.py, MIT.txt and GPL-2.0-only.txt are staged from tools/ and LICENSES/ by
 # tools/build-m4-packages.py. The module source is audio/j713/kernel/ in the repository.
 pkgname=omarchy-m4-speaker

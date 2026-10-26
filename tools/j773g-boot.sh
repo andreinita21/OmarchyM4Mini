@@ -36,6 +36,7 @@ if [[ $RUNG == u0 ]]; then
   DTB=$KIT/dtb/t8132-j773g-${U0_RUNG:-g6-display}.dtb
   KERNEL=$U0/Image.gz
   export BOOT_INITRD=$U0/initramfs.img
+  # shellcheck disable=SC2155  # a missing cmdline fails the boot itself
   export BOOT_ARGS="$BOOT_ARGS $(<"$U0/cmdline") ${J773G_CMDLINE:-}"
 else
   DTB=$SUB/dtb/t8132-j773g-$RUNG.dtb

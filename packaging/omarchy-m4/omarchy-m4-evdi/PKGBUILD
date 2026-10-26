@@ -1,5 +1,5 @@
 # Maintainer: KB2UKA
-# Built and signed by .github/workflows/packages.yml; see docs/package-channel.md.
+# Part of the J713 package channel; see docs/package-channel.md.
 # DisplayLink's evdi 1.15.1 (https://github.com/DisplayLink/evdi) for the J713 kernel, built by
 # display/evdi/build.sh: the module on the v0.1.0-alpha.1 kernel tree, the library for aarch64.
 # GPL-2.0-only.txt and LGPL-2.1-or-later.txt are staged from LICENSES/ by tools/build-m4-packages.py.

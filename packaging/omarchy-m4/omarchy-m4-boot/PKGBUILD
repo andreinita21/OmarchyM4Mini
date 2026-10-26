@@ -1,5 +1,5 @@
 # Maintainer: KB2UKA
-# Built and signed by .github/workflows/packages.yml; see docs/package-channel.md.
+# Part of the J713 package channel; see docs/package-channel.md.
 # m4-boot-compose.py, m4-update-check.py, m4-lid-lock.py, m4-notch.py, MIT.txt and GPL-2.0-or-later.txt are staged
 # from tools/ and LICENSES/, and the m1n1-* notices from display/j713/m1n1-base/, by tools/build-m4-packages.py.
 pkgname=omarchy-m4-boot

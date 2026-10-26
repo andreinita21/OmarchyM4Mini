@@ -1,96 +1,51 @@
-# Public contribution checks
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# CI and security checks
 
 Contributor PRs target `main`. Only the maintainer merges, and only changes
-verified on the mini. Neither a PR merge nor CI automatically publishes an
-installer.
+verified on the mini. CI builds and checks; it never publishes packages, images
+or releases, and it never touches hardware.
 
-## Where checks run and cost
-
-All workflows use **standard GitHub-hosted runners** (`ubuntu-24.04` and
-`macos-14`). No self-hosted runner, hardware access, personal login, repository
-secret or paid scanning service is required. Standard hosted runners are free
-for public repositories. While private, ordinary Actions use the account's
-private-repository allowance; CodeQL and dependency review explicitly wait for
-public visibility. Skipped private-only checks are not security qualification.
-
-See [GitHub runner pricing](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job).
+All workflows run on standard GitHub-hosted `ubuntu-24.04` runners with a
+read-only token. No secret, self-hosted runner or deployment environment is
+used.
 
 ## Checks
 
-| Check | What it covers |
+| Workflow / job | What it covers |
 | --- | --- |
-| PR policy | Contributor target is `main`. |
-| Tests (Linux) | Offline Python regressions and the Lua policy fixture. No image installation, speaker pulse or hardware reboot. |
-| Speaker daemon (Rust) | Verifies every hash in `audio/j713/imported-source.sha256`, then builds and unit-tests `speakersafetyd` with its locked dependencies. No audio device or speaker is touched. |
-| Installer transport (macOS) | Downloader and packaging regressions on macOS, including its shell and archive tools. |
-| Package channel | Builds the M4 pacman packages with makepkg, checks every file against the channel allowlist and protected paths, and refuses changed contents under an already-published file name. It then installs them with real pacman into a sandboxed alpha.1-style root, signed by a throwaway key, and runs the setup script twice. Protected stand-ins and `boot.bin` must not change, and pacman must refuse a database signed by an untrusted key. See [package-channel.md](package-channel.md). |
-| Secrets | Gitleaks default rules across fetched history and current files; supported encoded/archive content is also scanned. Findings are redacted. |
-| Malware | Updated ClamAV definitions; every tracked regular file, including archives. Detections, scanner errors, encrypted archives and scan-limit exhaustion fail. Git export exclusions cannot hide files. Symlinks, submodules, oversized files and unresolved LFS pointers require review. |
-| Workflow lint | Actionlint plus security-policy assertions and negative tests for unsafe workflow changes. |
-| Dependency review | On public PRs, block newly introduced moderate-or-higher advisories in supported dependency manifests, including development and unknown scopes. |
-| CodeQL | Python, C/C++, Rust and Actions source with extended security queries; public PRs, branch pushes and weekly scans. No repository build scripts are executed in the scanner job. |
-| Dependabot | Weekly GitHub Actions update PRs into `main`; updates are reviewed, never automatically merged. The speaker daemon's `Cargo.lock` and the filter reproduction tool's NumPy wheel are hash-pinned, so they get no automatic version-update PRs. Changes require re-pinning and checking the resulting audio identities; the installer does not ship the wheel. |
+| CI / Lint | `git diff --check` on the change; [shellcheck](https://www.shellcheck.net/) 0.11 at warning level on every shell script of the J773g stack (`tools/j773g*`, `tools/ci/*.sh`, `packaging/j773g/`); [ruff](https://docs.astral.sh/ruff/) on the J773g Python with the rules in [`ruff.toml`](../ruff.toml) (syntax errors, undefined names). |
+| CI / Device trees | [`tools/ci/build-j773g-dtbs.sh`](../tools/ci/build-j773g-dtbs.sh): fetches the pinned GravityLinux/linux commit (device-tree paths only) and compiles the packaged `t8132-j773g.dtb` (Gravity's board file plus the PMU/poweroff and headphone nodes of `linux-gravity-m4`) and every boot-ladder rung of `tools/j773g/inner-build.sh`. Fails on a dtc error, on a missing poweroff/RTC/headphone node, or when the PKGBUILD and the ladder build pin different Gravity commits. |
+| CI / Packages | [`tools/ci/check-j773g-packages.py`](../tools/ci/check-j773g-packages.py): every `packaging/j773g` PKGBUILD sources cleanly, names its package, version and `aarch64`/`any`, has one checksum per source, pins every download with a real checksum, and ships the local sources and install file it lists; stray files must at least be documented. The weekly and manual runs also download every pinned source and verify its checksum. |
+| Security / Secrets | Gitleaks default rules across the history and current files; findings are redacted. |
+| Security / Workflow lint | actionlint (with shellcheck for `run:` snippets) on every workflow. |
+| Security / Dependency review | On PRs, blocks newly introduced moderate-or-higher advisories in supported manifests. |
+| CodeQL | Python and Actions with the extended security queries; PRs, pushes and weekly. |
+| Dependabot | Weekly GitHub Actions update PRs into `main`; reviewed, never merged automatically. |
 
-CodeQL does not parse kernel patches as complete kernel translation units or
-qualify hardware. Its build-free C/C++ analysis can miss context supplied by
-external kernel headers. Dependency review covers supported manifests, not
-arbitrary URLs or vendored source. ClamAV detects known signatures and heuristics;
-it cannot prove source code contains no malicious logic. Gitleaks cannot recognize
-every credential format. Downloaded release binaries and installer images need
-separate artifact checks and physical acceptance; source CI does not scan those
-external release assets.
+Running the checks locally:
+
+```sh
+tools/ci/build-j773g-dtbs.sh              # CPP="clang -E" on macOS
+python3 tools/ci/check-j773g-packages.py   # add --download to verify sources
+ruff check tools/j773g
+```
+
+## Limits
+
+CI does not build the kernel, Mesa, m1n1 or U-Boot packages (they need an
+aarch64 Arch Linux ARM host; see `tools/j773g-pkg.sh`), does not boot anything
+and does not run the device-tree schema checks (`CHECK_DTBS`). A green run says
+the sources are consistent and the device trees compile, not that the mini
+boots. Hardware behaviour is verified on the mini before a change is merged.
 
 ## Trust boundaries
 
-Fork PRs use `pull_request`, never privileged `pull_request_target`. The token is
-read-only, checkout credentials are not persisted, actions are pinned by full
-commit SHA, and scanner binaries have fixed SHA-256 checksums. Only the CodeQL
-job requests the permission needed to upload security results.
+Fork PRs use `pull_request`, never `pull_request_target`. Checkout credentials
+are not persisted, actions are pinned by full commit SHA, downloaded tools
+(shellcheck, actionlint, gitleaks) have fixed SHA-256 checksums, and ruff is
+pinned by version. Only the CodeQL job may upload security results.
 
-The single exception is the `publish` job in `packages.yml`. It runs only for
-pushes and manual runs on `main`, after the package checks pass, inside the
-`package-publish` environment (deployments restricted to `main`). It alone
-receives write access and the package signing key (`PACKAGE_SIGNING_KEY`). It
-signs packages and the repository database and publishes them to the `packages`
-release. It runs only once the repository variable `PUBLISH_PACKAGES` is
-`true`; until then, pushes build and check the packages without publishing.
-The workflow policy and its negative tests reject a secret, write
-access or that environment anywhere else. No workflow publishes an installer.
-
-External contributors require maintainer approval to run workflows. Review the
-workflow, build scripts and dependencies **before** approving a run. CODEOWNERS
-assigns every contribution to the maintainer. Protection must require that
-review and dismiss it after changes; a contributor can alter workflow source and tests,
-so their own green checks alone are never approval. Review new executables,
-network destinations, obfuscation and changes to safety protections manually.
-
-## Activation before opening contributions
-
-The setup helper prints the exact configuration without changing anything by
-default:
-
-```sh
-python3 tools/ci/configure-public-security.py --gh /absolute/path/to/gh
-```
-
-`--apply-settings` sets read-only workflow tokens, SHA pinning, an official-action
-allowlist and dependency alerts. It never changes visibility. On the public
-repo, run `--activate-public` to require the CI checks, CODEOWNER review and
-CodeQL results, require approval for all external contributors, restrict `main`
-updates to the maintainer, enable push protection/private vulnerability
-reports, and verify the settings by reading them back. No other settings or
-rulesets are replaced. This helper must run from a reviewed checkout with the
-owner's authenticated CLI, never inside an untrusted PR workflow.
-
-The public activation refuses to run until these workflow files and CODEOWNERS
-are present on the protected `main` branch. First run the workflows on it
-and inspect the Security tab; resolve findings before release. A successful
-scan is not a substitute for successful enforcement. Confirm a fork PR runs only
-after approval and cannot merge with a failed required check or missing review.
-
-The required status names are recorded in the setup helper. CodeQL merge rules
-block security alerts at medium or higher, and non-security errors. The maintainer can
-bypass review rules **through a PR** for maintainer-authored changes; using that
-exception requires reviewing the actual results. Ordinary contributors cannot
-bypass. The separate "Maintainer merges only" update rule reserves updates to
-`main` to the maintainer.
+External contributors need maintainer approval before their workflows run.
+Review the workflow, build scripts and dependencies **before** approving a run;
+CODEOWNERS assigns every contribution to the maintainer, and a contributor's
+own green checks are never approval.

@@ -1,5 +1,5 @@
 # Maintainer: KB2UKA
-# Built and signed by .github/workflows/packages.yml; see docs/package-channel.md.
+# Part of the J713 package channel; see docs/package-channel.md.
 # The payload holds the alpha.1 package's modules, licenses and configuration,
 # plus the kernel alpha.1 boots (build 18). Corresponding source: the
 # v0.1.0-alpha.1 release source archives and patches-kernel/j713-input/.

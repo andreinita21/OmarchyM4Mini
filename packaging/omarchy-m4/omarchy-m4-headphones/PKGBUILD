@@ -1,6 +1,6 @@
 # Maintainer: KB2UKA
 # Contributor: Luthfi Hizb
-# Built and signed by .github/workflows/packages.yml; see docs/package-channel.md.
+# Part of the J713 package channel; see docs/package-channel.md.
 # m4-headphones.py, the UCM and WirePlumber files, MIT.txt and GPL-2.0-only.txt are
 # staged from tools/, audio/j713/headphones/policy/ and LICENSES/ by
 # tools/build-m4-packages.py. The module source is audio/j713/headphones/kernel/.

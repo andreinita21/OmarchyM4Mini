@@ -27,6 +27,7 @@ set -euo pipefail
 # builder baked them into root.img / boot.img).
 ESP_VOLID=4F4D5801
 BOOT_UUID=4f4d5801-424f-4f54-8000-000000000001
+# shellcheck disable=SC2034  # listed with the other fixed identities
 ROOT_UUID=4f4d5801-524f-4f54-8000-000000000001
 PORT=8000
 

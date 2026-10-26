@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2174  # mkdir -m -p: only the leaf directories need the mode
 # SPDX-License-Identifier: MIT
 # Build the Omarchy image for the M4 Mac mini (J773g) inside the Arch Linux
 # ARM container (tools/j773g-image.sh runs this as root, --privileged).

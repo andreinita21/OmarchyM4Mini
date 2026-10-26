@@ -1,5 +1,5 @@
 # Maintainer: KB2UKA
-# Built and signed by .github/workflows/packages.yml; see docs/package-channel.md.
+# Part of the J713 package channel; see docs/package-channel.md.
 # The two plugins come from the pinned package-inputs release; SOURCE.md names their source.
 pkgname=omarchy-m4-gst-audio
 pkgver=1.28.7

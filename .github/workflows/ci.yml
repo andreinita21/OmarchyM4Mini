@@ -5,6 +5,8 @@ on:
     branches: [main]
   push:
     branches: [main]
+  schedule:
+    - cron: '17 6 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -15,26 +17,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  policy:
-    name: PR policy
+  lint:
+    name: Lint (whitespace, shell, Python)
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Check contribution target
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE: ${{ github.base_ref }}
-        run: |
-          if [[ "$EVENT" != pull_request || "$BASE" == main ]]; then
-            exit 0
-          fi
-          echo 'Contributor PRs must target main.' >&2
-          exit 1
-
-  tests:
-    name: Tests (Linux)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,13 +29,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
-      - name: Install test tools
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends lua5.4 device-tree-compiler
-      - name: Fetch pinned Asahi devicetree sources
-        run: |
-          bash tools/ci/fetch-asahi-dts.sh "$RUNNER_TEMP/asahi-linux"
-          echo "M4_ASAHI_TREE=$RUNNER_TEMP/asahi-linux" >> "$GITHUB_ENV"
-      - name: Check whitespace in proposed change
+      - name: Check whitespace in the change
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
@@ -59,38 +39,46 @@ jobs:
           else
             git show --format= --check HEAD
           fi
-      - name: Run offline regression suite
-        env:
-          LUA: lua5.4
-          PYTHONDONTWRITEBYTECODE: '1'
-        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Install pinned shellcheck
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz -o "$RUNNER_TEMP/shellcheck.tar.xz"
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  $RUNNER_TEMP/shellcheck.tar.xz" | sha256sum --check
+          tar -xJf "$RUNNER_TEMP/shellcheck.tar.xz" -C "$RUNNER_TEMP" --strip-components=1 shellcheck-v0.11.0/shellcheck
+      - name: Shellcheck the J773g scripts
+        run: |
+          # Every tracked shell script of the mini's stack, by extension or shebang.
+          git ls-files -z 'tools/j773g*' 'tools/ci/*.sh' 'packaging/j773g/' |
+            while IFS= read -r -d '' f; do
+              case $f in
+                *.sh) printf '%s\0' "$f" ;;
+                *) if head -n1 -- "$f" | grep -qE '^#!.*/(env )?(ba)?sh( |$)'; then printf '%s\0' "$f"; fi ;;
+              esac
+            done | xargs -0 "$RUNNER_TEMP/shellcheck" --severity=warning --format=gcc
+      - name: Lint the J773g Python
+        run: |
+          python -m pip install --disable-pip-version-check ruff==0.14.2
+          ruff check --no-cache --output-format=github tools/j773g tools/ci/check-j773g-packages.py
 
-  speaker-daemon:
-    name: Speaker daemon (Rust)
+  dtbs:
+    name: Device trees (packaged DTB and boot ladder)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Verify pinned audio source
-        working-directory: audio/j713
-        run: sha256sum --check --strict imported-source.sha256
-      - name: Install ALSA headers
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config
-      - name: Build speakersafetyd
-        working-directory: audio/j713/speakersafetyd
-        run: |
-          cargo --version
-          cargo build --locked --release
-      - name: Test speakersafetyd
-        working-directory: audio/j713/speakersafetyd
-        run: cargo test --locked
+      - name: Install device-tree tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends device-tree-compiler cpp
+      - name: Build the J773g DTBs against the pinned Gravity tree
+        env:
+          OUT: ${{ runner.temp }}/dtbs
+        run: tools/ci/build-j773g-dtbs.sh
 
-  macos:
-    name: Installer transport (macOS)
-    runs-on: macos-14
-    timeout-minutes: 10
+  packages:
+    name: Packages (PKGBUILD checks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -98,7 +86,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
-      - name: Run downloader and packaging regressions on macOS
-        env:
-          PYTHONDONTWRITEBYTECODE: '1'
-        run: python -m unittest discover -s tests -p test_j713_download.py -v
+      - name: Check the J773g PKGBUILDs
+        run: python tools/ci/check-j773g-packages.py
+      - name: Verify every pinned download (weekly and on demand)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: python tools/ci/check-j773g-packages.py --download

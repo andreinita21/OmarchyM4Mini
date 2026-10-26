@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck shell=busybox
 # SPDX-License-Identifier: MIT
 # esp-reformat.sh <http://HOST:8000> [ESP device] — J773g RAM shell (busybox).
 # For an ESP whose FAT is beyond repair (invalid cluster chains that come back
@@ -28,6 +29,7 @@ ENCRYPT=${ENCRYPT:-0}
 
 echo "--- saving the ESP's own files to RAM (busybox tar has no --exclude: copy by name)"
 rm -rf /tmp/esp-save && mkdir -p /tmp/esp-save/m1n1
+# shellcheck disable=SC2045  # busybox ash; FAT names here have no spaces
 for e in $(ls -A /mnt/esp); do
   case $e in
     EFI|limine.conf|limine.conf.old|m1n1|FSCK*|.Spotlight-V100|.Trashes|._*) continue ;;

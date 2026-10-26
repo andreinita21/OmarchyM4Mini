@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck shell=busybox
 # SPDX-License-Identifier: MIT
 # Part 3 of tools/j773g-install.sh (docs/j773g-install.md): run in the J773g
 # RAM shell booted with `tools/j773g-boot.sh g6-display` (NVMe + Ethernet up,

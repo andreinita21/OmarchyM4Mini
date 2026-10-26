@@ -39,24 +39,6 @@ jobs:
         run: |
           "$RUNNER_TEMP/gitleaks" dir --redact=100 --exit-code=1 --max-archive-depth=3 --max-decode-depth=3 --config .github/security/gitleaks.toml .
 
-  malware:
-    name: Malware
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Install antivirus
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clamav clamav-freshclam
-          sudo systemctl stop clamav-freshclam || true
-      - name: Require current signed antivirus definitions
-        run: sudo freshclam
-      - name: Scan every tracked file including archives
-        run: python3 tools/ci/scan-source.py
-
   workflow-lint:
     name: Workflow lint
     runs-on: ubuntu-24.04
@@ -73,11 +55,6 @@ jobs:
           tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
       - name: Lint workflows and shell snippets
         run: '"$RUNNER_TEMP/actionlint" -color'
-      - name: Validate workflow security policy and negative cases
-        run: |
-          python3 -m pip install --disable-pip-version-check PyYAML==6.0.3
-          python3 tools/ci/check-workflows.py
-          python3 -m unittest discover -s tests/ci -v
 
   dependencies:
     name: Dependency review

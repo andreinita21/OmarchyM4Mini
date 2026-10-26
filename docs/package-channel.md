@@ -440,48 +440,17 @@ package's contents without a new version.
 - **Key:** ed25519 `578DF78177CF6DF29B888B8C9404F3CC90797A50`, used only for
   this repository. Packages and the database are signed; machines use
   `SigLevel = Required DatabaseRequired` for it.
-- **CI:** [packages.yml](../.github/workflows/packages.yml) builds the
-  packages with makepkg on a standard hosted runner. It runs on every PR and
-  branch push, checks policy, then installs them with real pacman into a
-  sandboxed alpha.1-style root. There, a throwaway key signs a local copy, the
-  setup script connects the root twice, and protected stand-ins and `boot.bin`
-  must stay byte-identical. pacman must also refuse a database signed by an
-  untrusted key.
-- **Publishing:** only the `publish` job, only on `main`, inside the
-  `package-publish` environment (deployments restricted to `main`), receives
-  the private key as `PACKAGE_SIGNING_KEY`. It keeps already-published package
-  files and verifies their signatures, then signs and uploads new ones. It
-  repairs an interrupted earlier run by signing an unsigned published package.
-  The signed databases go up last, whenever they are missing, unsigned or out
-  of date. Everything is then
-  downloaded anonymously and verified again. The
-  [workflow policy](../tools/ci/check-workflows.py) allows a secret or write
-  access nowhere else.
-
-### Maintainer setup (once)
-
-```sh
-# Environment limited to main, then the key, read from the maintainer's offline copy.
-gh api -X PUT repos/Kb2uka/Omarchy-M4-Native/environments/package-publish \
-  -F 'deployment_branch_policy[protected_branches]=false' \
-  -F 'deployment_branch_policy[custom_branch_policies]=true'
-gh api -X POST repos/Kb2uka/Omarchy-M4-Native/environments/package-publish/deployment-branch-policies \
-  -f name=main -f type=branch
-GNUPGHOME=~/.config/omarchy-m4/signing-gnupg gpg --armor --export-secret-keys 578DF78177CF6DF29B888B8C9404F3CC90797A50 |
-  gh secret set PACKAGE_SIGNING_KEY --env package-publish
-```
-
-Keep an offline copy of the private key and its revocation certificate. To
-rotate it, publish a keyring package that adds the new key and revokes the old
-one. Sign it with the old key, then switch the fingerprint in
-`channel.json` and `tools/m4-channel-setup.py`.
+- **Build and publishing:** the J713 channel's packages are built, signed
+  and published outside this repository. This repository's CI checks the
+  J773g stack only ([ci-security.md](ci-security.md)); it holds no signing
+  key and publishes nothing.
 
 ## Corresponding source
 
 Every compiled binary downloaded from the `package-inputs` release is joined to
 its pinned corresponding source and its rebuild correspondence in
 [`packaging/channel-source-joins.json`](../packaging/channel-source-joins.json).
-`tools/check-m4-packages.py` enforces in CI, with no override, that every
+`tools/check-m4-packages.py` enforces, with no override, that every
 package version not yet published has a `rebuilt-identical` join for each
 binary it downloads. A version already published byte for byte is on Airs and
 is not uploaded again, so it passes; any new version of it needs the rebuild
